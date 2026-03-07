@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated();
+    }
+
+    function isValidProject(data) {
+      return data.title is string && data.title.size() > 0 &&
+             data.category is string && data.category.size() > 0 &&
+             (!('description' in data) || data.description is string) &&
+             (!('thumbnailUrl' in data) || data.thumbnailUrl is string) &&
+             (!('role' in data) || data.role is string) &&
+             (!('client' in data) || data.client is string) &&
+             (!('year' in data) || data.year is string) &&
+             (!('videoUrl' in data) || data.videoUrl is string) &&
+             (!('videoFile' in data) || data.videoFile is string) &&
+             (!('isFeatured' in data) || data.isFeatured is bool);
+    }
+
+    function isValidSettings(data) {
+      return true; // Simplified for settings
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /projects/{projectId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidProject(request.resource.data);
+      allow update: if isAdmin() && isValidProject(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /settings/site {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
