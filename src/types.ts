@@ -1,5 +1,5 @@
 export interface Project {
-  id: string;
+  id: number;
   title: string;
   role: string;
   client: string;
@@ -10,7 +10,9 @@ export interface Project {
   description: string;
   isFeatured: number;
   category: string;
-  images?: { id: number; imageUrl: string }[];
+  images?: { id: string; imageUrl: string }[];
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface SiteSettings {
