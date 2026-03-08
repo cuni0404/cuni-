@@ -28,11 +28,11 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default function Admin() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [password, setPassword] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [settings, setSettings] = useState<SiteSettings>({
     logoText: '',
@@ -82,11 +82,9 @@ export default function Admin() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && user.email === 'nik75687@gmail.com') {
-        setUser(user);
+      if (user) {
         setIsLoggedIn(true);
       } else {
-        setUser(null);
         setIsLoggedIn(false);
       }
     });
@@ -131,22 +129,24 @@ export default function Admin() {
     }
   };
 
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      const result = await signInWithPopup(auth, provider);
-      if (result.user.email !== 'nik75687@gmail.com') {
-        await signOut(auth);
-        alert('Unauthorized access. Only the admin can log in.');
+  const handleLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    if (password === '0404') {
+      try {
+        await signInAnonymously(auth);
+        setIsLoggedIn(true);
+      } catch (err) {
+        console.error('Login failed:', err);
+        alert('접속 오류가 발생했습니다.');
       }
-    } catch (err) {
-      console.error('Login failed:', err);
-      alert('Login failed');
+    } else {
+      alert('비밀번호가 틀렸습니다.');
     }
   };
 
   const handleLogout = async () => {
     await signOut(auth);
+    setIsLoggedIn(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -279,16 +279,19 @@ export default function Admin() {
   if (!isLoggedIn) {
     return (
       <div className="h-screen flex items-center justify-center px-6">
-        <div className="w-full max-w-sm space-y-6 text-center">
-          <h1 className="text-2xl font-bold tracking-tighter">ADMIN ACCESS</h1>
-          <p className="text-sm opacity-60">Please log in with your admin Google account.</p>
-          <button 
-            onClick={handleLogin}
-            className="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-white/90 transition-colors flex items-center justify-center gap-2"
-          >
-            LOG IN WITH GOOGLE
+        <form onSubmit={handleLogin} className="w-full max-w-sm space-y-6">
+          <h1 className="text-2xl font-bold tracking-tighter text-center">ADMIN ACCESS</h1>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            className="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-lg focus:outline-none focus:border-white/40"
+          />
+          <button type="submit" className="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-white/90 transition-colors">
+            LOGIN
           </button>
-        </div>
+        </form>
       </div>
     );
   }
