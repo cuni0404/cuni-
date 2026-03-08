@@ -31,8 +31,6 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default function Admin() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [password, setPassword] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [settings, setSettings] = useState<SiteSettings>({
     logoText: '',
@@ -81,22 +79,9 @@ export default function Admin() {
   ];
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setIsLoggedIn(true);
-      } else {
-        setIsLoggedIn(false);
-      }
-    });
-    return () => unsubscribe();
+    fetchProjects();
+    fetchSettings();
   }, []);
-
-  useEffect(() => {
-    if (isLoggedIn) {
-      fetchProjects();
-      fetchSettings();
-    }
-  }, [isLoggedIn]);
 
   const fetchProjects = async () => {
     try {
@@ -127,26 +112,6 @@ export default function Admin() {
     } catch (err) {
       console.error('Error fetching settings:', err);
     }
-  };
-
-  const handleLogin = async (e: FormEvent) => {
-    e.preventDefault();
-    if (password === '0404') {
-      try {
-        await signInAnonymously(auth);
-        setIsLoggedIn(true);
-      } catch (err) {
-        console.error('Login failed:', err);
-        alert('접속 오류가 발생했습니다.');
-      }
-    } else {
-      alert('비밀번호가 틀렸습니다.');
-    }
-  };
-
-  const handleLogout = async () => {
-    await signOut(auth);
-    setIsLoggedIn(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -276,26 +241,6 @@ export default function Admin() {
     }
   };
 
-  if (!isLoggedIn) {
-    return (
-      <div className="h-screen flex items-center justify-center px-6">
-        <form onSubmit={handleLogin} className="w-full max-w-sm space-y-6">
-          <h1 className="text-2xl font-bold tracking-tighter text-center">ADMIN ACCESS</h1>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-lg focus:outline-none focus:border-white/40"
-          />
-          <button type="submit" className="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-white/90 transition-colors">
-            LOGIN
-          </button>
-        </form>
-      </div>
-    );
-  }
-
   return (
     <div className="pt-32 pb-24 px-6 md:px-12 max-w-6xl mx-auto relative">
       {/* Uploading Overlay */}
@@ -331,13 +276,6 @@ export default function Admin() {
               <Settings size={14} /> SITE SETTINGS
             </button>
           </div>
-          <button 
-            onClick={() => setIsLoggedIn(false)}
-            className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-all"
-            title="Logout"
-          >
-            <LogOut size={18} />
-          </button>
         </div>
       </div>
 

@@ -14,14 +14,12 @@ service cloud.firestore {
 
     // Projects collection
     match /projects/{projectId} {
-      allow read: if true; // Publicly readable
-      allow write: if isAuthenticated(); // Allowed if logged in via password (anonymous auth)
+      allow read, write: if true; // Publicly readable and writable
     }
 
     // Settings collection
     match /settings/{settingId} {
-      allow read: if true; // Publicly readable
-      allow write: if isAuthenticated(); // Allowed if logged in via password (anonymous auth)
+      allow read, write: if true; // Publicly readable and writable
     }
   }
 }
