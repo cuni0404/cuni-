@@ -76,6 +76,7 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
   app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
   // API Routes
@@ -129,8 +130,14 @@ async function startServer() {
   });
 
   app.post("/api/upload", upload.single("file"), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    res.json({ url: `/uploads/${req.file.filename}` });
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+      console.log('File uploaded successfully:', req.file.filename);
+      res.json({ url: `/uploads/${req.file.filename}` });
+    } catch (error) {
+      console.error('Upload handler error:', error);
+      res.status(500).json({ error: "Internal server error during upload" });
+    }
   });
 
   // Vite middleware for development

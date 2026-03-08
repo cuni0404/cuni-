@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Layout } from 'lucide-react';
 import { Project, SiteSettings } from '../types';
 import { cn } from '../lib/utils';
-import { db, collection, query, orderBy, onSnapshot, doc } from '../firebase';
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -12,27 +11,20 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Subscribe to projects
-    const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
-    const unsubscribeProjects = onSnapshot(q, (snapshot) => {
-      const projectsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as any as Project[];
-      setProjects(projectsData);
-    });
+    fetch('/api/projects')
+      .then(res => res.json())
+      .then(data => {
+        // Filter by isFeatured and sort by id desc (latest first)
+        const featured = data
+          .filter((p: Project) => p.isFeatured === 1)
+          .sort((a: Project, b: Project) => b.id - a.id)
+          .slice(0, 6); // Show only top 6 featured
+        setProjects(featured);
+      });
 
-    // Subscribe to settings
-    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'site'), (doc) => {
-      if (doc.exists()) {
-        setSettings(doc.data() as SiteSettings);
-      }
-    });
-
-    return () => {
-      unsubscribeProjects();
-      unsubscribeSettings();
-    };
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => setSettings(data));
   }, []);
 
   const scroll = (direction: 'left' | 'right') => {
