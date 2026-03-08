@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X, Mail, ArrowRight, Plus, Trash2, Edit2, ChevronLeft, Youtube, Twitter, Instagram } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -18,6 +18,7 @@ import { cn } from './lib/utils';
 function Navbar({ settings }: { settings: any }) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navLinks = [
     { name: 'HOME', path: '/' },
@@ -91,8 +92,9 @@ function Navbar({ settings }: { settings: any }) {
   );
 }
 
-export default function App() {
+function AppContent() {
   const [settings, setSettings] = useState<any>({});
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchSettings = () => {
@@ -121,7 +123,7 @@ export default function App() {
       keys = keys.slice(-target.length);
       
       if (keys.join('') === target) {
-        window.location.href = '/admin';
+        navigate('/admin');
       }
 
       timeout = setTimeout(() => {
@@ -134,65 +136,71 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       clearTimeout(timeout);
     };
-  }, []);
+  }, [navigate]);
 
   return (
-    <Router>
-      <div className="min-h-screen bg-[#050505] text-white selection:bg-brand selection:text-black">
-        <Navbar settings={settings} />
-        <main>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/work" element={<Work />} />
-            <Route path="/work/:id" element={<ProjectDetail />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/admin" element={<Admin />} />
-          </Routes>
-        </main>
+    <div className="min-h-screen bg-[#050505] text-white selection:bg-brand selection:text-black">
+      <Navbar settings={settings} />
+      <main>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/work" element={<Work />} />
+          <Route path="/work/:id" element={<ProjectDetail />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/admin" element={<Admin />} />
+        </Routes>
+      </main>
+      
+      <footer className="px-6 py-12 md:px-12 border-t border-white/10 flex flex-col md:flex-row justify-between items-end gap-12">
+        <div className="flex flex-col gap-8 md:flex-row md:gap-24">
+          <div 
+            className="space-y-2 cursor-default select-none"
+            onDoubleClick={() => navigate('/admin')}
+          >
+            <p className="text-[10px] uppercase tracking-[0.2em] text-brand opacity-60">copyright</p>
+            <div className="text-xs font-medium leading-relaxed">
+              ©2026 cuni<br />
+              Motion Graphics Artist
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-brand opacity-60">contact</p>
+            <div className="text-xs font-medium leading-relaxed">
+              {settings.contactEmail || "dominic0404@naver.com"}
+            </div>
+          </div>
+        </div>
         
-        <footer className="px-6 py-12 md:px-12 border-t border-white/10 flex flex-col md:flex-row justify-between items-end gap-12">
-          <div className="flex flex-col gap-8 md:flex-row md:gap-24">
-            <div 
-              className="space-y-2 cursor-default select-none"
-              onDoubleClick={() => window.location.href = '/admin'}
-            >
-              <p className="text-[10px] uppercase tracking-[0.2em] text-brand opacity-60">copyright</p>
-              <div className="text-xs font-medium leading-relaxed">
-                ©2026 cuni<br />
-                Motion Graphics Artist
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-brand opacity-60">contact</p>
-              <div className="text-xs font-medium leading-relaxed">
-                {settings.contactEmail || "dominic0404@naver.com"}
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex gap-8 items-center">
-            {settings.contactInstagram && (
-              <a href={settings.contactInstagram} target="_blank" rel="noreferrer" className="opacity-40 hover:opacity-100 hover:text-brand transition-all">
-                <Instagram size={24} />
-              </a>
-            )}
-            {settings.contactX && (
-              <a href={settings.contactX} target="_blank" rel="noreferrer" className="opacity-40 hover:opacity-100 hover:text-brand transition-all">
-                <Twitter size={24} />
-              </a>
-            )}
-            {settings.contactYoutube && (
-              <a href={settings.contactYoutube} target="_blank" rel="noreferrer" className="opacity-40 hover:opacity-100 hover:text-brand transition-all">
-                <Youtube size={24} />
-              </a>
-            )}
-            <a href={`mailto:${settings.contactEmail || "dominic0404@naver.com"}`} className="opacity-40 hover:opacity-100 hover:text-brand transition-all">
-              <Mail size={24} />
+        <div className="flex gap-8 items-center">
+          {settings.contactInstagram && (
+            <a href={settings.contactInstagram} target="_blank" rel="noreferrer" className="opacity-40 hover:opacity-100 hover:text-brand transition-all">
+              <Instagram size={24} />
             </a>
-          </div>
-        </footer>
-      </div>
+          )}
+          {settings.contactX && (
+            <a href={settings.contactX} target="_blank" rel="noreferrer" className="opacity-40 hover:opacity-100 hover:text-brand transition-all">
+              <Twitter size={24} />
+            </a>
+          )}
+          {settings.contactYoutube && (
+            <a href={settings.contactYoutube} target="_blank" rel="noreferrer" className="opacity-40 hover:opacity-100 hover:text-brand transition-all">
+              <Youtube size={24} />
+            </a>
+          )}
+          <a href={`mailto:${settings.contactEmail || "dominic0404@naver.com"}`} className="opacity-40 hover:opacity-100 hover:text-brand transition-all">
+            <Mail size={24} />
+          </a>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }
