@@ -8,11 +8,9 @@ export interface Project {
   videoFile: string;
   thumbnailUrl: string;
   description: string;
-  isFeatured: boolean;
+  isFeatured: number;
   category: string;
-  images?: { id: string; imageUrl: string }[];
-  createdAt?: any;
-  updatedAt?: any;
+  images?: { id: number; imageUrl: string }[];
 }
 
 export interface SiteSettings {

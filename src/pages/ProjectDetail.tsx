@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ChevronLeft } from 'lucide-react';
 import { Project } from '../types';
+import { db } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -11,21 +13,24 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (!id) return;
-    setLoading(true);
-    fetch(`/api/projects/${id}`)
-      .then(res => {
-        if (!res.ok) throw new Error('Project not found');
-        return res.json();
-      })
-      .then(data => {
-        setProject(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
+    const fetchProject = async () => {
+      setLoading(true);
+      try {
+        const docRef = doc(db, 'projects', id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setProject({ id: docSnap.id, ...docSnap.data() } as Project);
+        } else {
+          setProject(null);
+        }
+      } catch (err) {
+        console.error('Error fetching project:', err);
         setProject(null);
+      } finally {
         setLoading(false);
-      });
+      }
+    };
+    fetchProject();
   }, [id]);
 
   const getEmbedUrl = (url: string) => {

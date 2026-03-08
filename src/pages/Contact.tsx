@@ -2,19 +2,25 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Mail, ArrowRight, Youtube, Twitter } from 'lucide-react';
 import { SiteSettings } from '../types';
-import { db, doc, onSnapshot } from '../firebase';
+import { db } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 export default function Contact() {
   const [settings, setSettings] = useState<Partial<SiteSettings>>({});
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'site'), (doc) => {
-      if (doc.exists()) {
-        setSettings(doc.data() as SiteSettings);
+    const fetchSettings = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'main');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setSettings(docSnap.data());
+        }
+      } catch (err) {
+        console.error('Error fetching settings:', err);
       }
-    });
-
-    return () => unsubscribe();
+    };
+    fetchSettings();
   }, []);
 
   return (

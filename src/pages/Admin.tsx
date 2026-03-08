@@ -13,10 +13,26 @@ import {
   LogOut
 } from 'lucide-react';
 import { Project, ProjectInput, SiteSettings } from '../types';
+import { db, auth, storage } from '../firebase';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  getDoc, 
+  setDoc,
+  query,
+  orderBy,
+  serverTimestamp
+} from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default function Admin() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [password, setPassword] = useState('');
+  const [user, setUser] = useState<any>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [settings, setSettings] = useState<SiteSettings>({
     logoText: '',
@@ -52,7 +68,7 @@ export default function Admin() {
     isFeatured: 0,
     category: 'Webtoon PV'
   });
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
   const [uploading, setUploading] = useState(false);
 
@@ -65,6 +81,19 @@ export default function Admin() {
   ];
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user && user.email === 'nik75687@gmail.com') {
+        setUser(user);
+        setIsLoggedIn(true);
+      } else {
+        setUser(null);
+        setIsLoggedIn(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (isLoggedIn) {
       fetchProjects();
       fetchSettings();
@@ -72,48 +101,74 @@ export default function Admin() {
   }, [isLoggedIn]);
 
   const fetchProjects = async () => {
-    const res = await fetch('/api/projects');
-    const data = await res.json();
-    setProjects(data);
-  };
-
-  const fetchSettings = async () => {
-    const res = await fetch('/api/settings');
-    const data = await res.json();
-    // Ensure no null values for inputs
-    const sanitizedData = { ...data };
-    Object.keys(sanitizedData).forEach(key => {
-      if (sanitizedData[key] === null) sanitizedData[key] = '';
-    });
-    setSettings(prev => ({ ...prev, ...sanitizedData }));
-  };
-
-  const handleLogin = (e: FormEvent) => {
-    e.preventDefault();
-    if (password === '0404') {
-      setIsLoggedIn(true);
-    } else {
-      alert('Wrong password');
+    try {
+      const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const projectsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Project[];
+      setProjects(projectsData);
+    } catch (err) {
+      console.error('Error fetching projects:', err);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const fetchSettings = async () => {
+    try {
+      const docRef = doc(db, 'settings', 'main');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const sanitizedData = { ...data };
+        Object.keys(sanitizedData).forEach(key => {
+          if (sanitizedData[key] === null) sanitizedData[key] = '';
+        });
+        setSettings(prev => ({ ...prev, ...sanitizedData }));
+      }
+    } catch (err) {
+      console.error('Error fetching settings:', err);
+    }
+  };
+
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      if (result.user.email !== 'nik75687@gmail.com') {
+        await signOut(auth);
+        alert('Unauthorized access. Only the admin can log in.');
+      }
+    } catch (err) {
+      console.error('Login failed:', err);
+      alert('Login failed');
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+  };
+
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure?')) {
-      await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-      fetchProjects();
+      try {
+        await deleteDoc(doc(db, 'projects', id));
+        fetchProjects();
+      } catch (err) {
+        console.error('Error deleting project:', err);
+      }
     }
   };
 
   const handleEdit = async (project: Project) => {
     setEditingId(project.id);
-    // Ensure no null values for inputs
     const sanitizedProject = { ...project };
     (Object.keys(sanitizedProject) as Array<keyof Project>).forEach(key => {
       if (sanitizedProject[key] === null) {
         (sanitizedProject as any)[key] = '';
       }
     });
-    setCurrentProject(sanitizedProject);
+    setCurrentProject(sanitizedProject as any);
     setIsEditing(true);
   };
 
@@ -121,27 +176,22 @@ export default function Admin() {
     e.preventDefault();
     setSaveStatus('saving');
     
-    const method = editingId ? 'PUT' : 'POST';
-    const url = editingId ? `/api/projects/${editingId}` : '/api/projects';
-
-    console.log('Saving project:', currentProject);
-
     try {
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentProject)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save project');
+      if (editingId) {
+        const docRef = doc(db, 'projects', editingId);
+        await updateDoc(docRef, {
+          ...currentProject,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await addDoc(collection(db, 'projects'), {
+          ...currentProject,
+          createdAt: serverTimestamp()
+        });
       }
 
       setSaveStatus('success');
       
-      // Keep modal open for a moment to show success message
       setTimeout(() => {
         setSaveStatus('idle');
         setIsEditing(false);
@@ -161,7 +211,7 @@ export default function Admin() {
         fetchProjects();
       }, 1500);
     } catch (err) {
-      console.error(err);
+      console.error('Error saving project:', err);
       alert('프로젝트 저장 중 오류가 발생했습니다.');
       setSaveStatus('idle');
     }
@@ -171,7 +221,6 @@ export default function Admin() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check file size (100MB limit)
     const MAX_SIZE = 100 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
       alert(`용량이 너무 커서 업로드가 안됩니다. 최대 용량은 100MB입니다. (현재: ${(file.size / (1024 * 1024)).toFixed(2)}MB)`);
@@ -179,56 +228,35 @@ export default function Admin() {
     }
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
 
     try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal
-      });
+      const storageRef = ref(storage, `uploads/${Date.now()}-${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
       
-      clearTimeout(timeoutId);
-      
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('Upload failed with status:', res.status, errorText);
-        alert(`업로드 실패: ${res.status} ${res.statusText}`);
-        return;
-      }
-
-      const data = await res.json();
-      if (data.url) {
+      if (downloadURL) {
         if (target === 'thumbnail') {
-          setCurrentProject(prev => ({ ...prev, thumbnailUrl: data.url }));
+          setCurrentProject(prev => ({ ...prev, thumbnailUrl: downloadURL }));
         } else if (target === 'projectVideo') {
-          setCurrentProject(prev => ({ ...prev, videoFile: data.url }));
+          setCurrentProject(prev => ({ ...prev, videoFile: downloadURL }));
         } else if (target === 'heroImage') {
-          setSettings(prev => ({ ...prev, heroImage: data.url }));
+          setSettings(prev => ({ ...prev, heroImage: downloadURL }));
         } else if (target === 'heroVideo') {
-          setSettings(prev => ({ ...prev, heroVideo: data.url }));
+          setSettings(prev => ({ ...prev, heroVideo: downloadURL }));
         } else if (target === 'logoImage') {
-          setSettings(prev => ({ ...prev, logoImage: data.url }));
+          setSettings(prev => ({ ...prev, logoImage: downloadURL }));
         } else if (target === 'aboutProfileImage') {
-          setSettings(prev => ({ ...prev, aboutProfileImage: data.url }));
+          setSettings(prev => ({ ...prev, aboutProfileImage: downloadURL }));
         } else if (target === 'aboutBackgroundImage') {
-          setSettings(prev => ({ ...prev, aboutBackgroundImage: data.url }));
+          setSettings(prev => ({ ...prev, aboutBackgroundImage: downloadURL }));
         } else if (target === 'clients') {
           const currentClients = settings.clients ? settings.clients.split(',').map(c => c.trim()) : [];
-          setSettings(prev => ({ ...prev, clients: [...currentClients, data.url].join(', ') }));
+          setSettings(prev => ({ ...prev, clients: [...currentClients, downloadURL].join(', ') }));
         }
       }
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        alert('업로드 시간이 초과되었습니다. 파일 용량이 너무 크거나 네트워크 상태를 확인해주세요.');
-      } else {
-        console.error('Upload failed', err);
-        alert('업로드 중 오류가 발생했습니다.');
-      }
+      console.error('Upload failed', err);
+      alert('업로드 중 오류가 발생했습니다.');
     } finally {
       setUploading(false);
     }
@@ -238,16 +266,12 @@ export default function Admin() {
     e.preventDefault();
     setSaveStatus('saving');
     try {
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
+      await setDoc(doc(db, 'settings', 'main'), settings);
       setSaveStatus('success');
       window.dispatchEvent(new CustomEvent('settingsUpdated'));
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
-      console.error(err);
+      console.error('Error saving settings:', err);
       setSaveStatus('idle');
     }
   };
@@ -255,19 +279,16 @@ export default function Admin() {
   if (!isLoggedIn) {
     return (
       <div className="h-screen flex items-center justify-center px-6">
-        <form onSubmit={handleLogin} className="w-full max-w-sm space-y-6">
-          <h1 className="text-2xl font-bold tracking-tighter text-center">ADMIN ACCESS</h1>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-lg focus:outline-none focus:border-white/40"
-          />
-          <button type="submit" className="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-white/90 transition-colors">
-            LOGIN
+        <div className="w-full max-w-sm space-y-6 text-center">
+          <h1 className="text-2xl font-bold tracking-tighter">ADMIN ACCESS</h1>
+          <p className="text-sm opacity-60">Please log in with your admin Google account.</p>
+          <button 
+            onClick={handleLogin}
+            className="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-white/90 transition-colors flex items-center justify-center gap-2"
+          >
+            LOG IN WITH GOOGLE
           </button>
-        </form>
+        </div>
       </div>
     );
   }

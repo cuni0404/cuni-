@@ -13,6 +13,8 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import ProjectDetail from './pages/ProjectDetail';
 import Admin from './pages/Admin';
+import { db } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { cn } from './lib/utils';
 
 function Navbar({ settings }: { settings: any }) {
@@ -97,10 +99,16 @@ function AppContent() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchSettings = () => {
-      fetch('/api/settings')
-        .then(res => res.json())
-        .then(data => setSettings(data));
+    const fetchSettings = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'main');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setSettings(docSnap.data());
+        }
+      } catch (err) {
+        console.error('Error fetching settings:', err);
+      }
     };
     fetchSettings();
     // Listen for settings updates from admin

@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Layout } from 'lucide-react';
 import { Project, SiteSettings } from '../types';
 import { cn } from '../lib/utils';
+import { db } from '../firebase';
+import { collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -11,20 +13,39 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch('/api/projects')
-      .then(res => res.json())
-      .then(data => {
-        // Filter by isFeatured and sort by id desc (latest first)
-        const featured = data
-          .filter((p: Project) => p.isFeatured === 1)
-          .sort((a: Project, b: Project) => b.id - a.id)
-          .slice(0, 6); // Show only top 6 featured
-        setProjects(featured);
-      });
+    const fetchProjects = async () => {
+      try {
+        const q = query(
+          collection(db, 'projects'), 
+          where('isFeatured', '==', 1),
+          orderBy('createdAt', 'desc'),
+          limit(6)
+        );
+        const querySnapshot = await getDocs(q);
+        const projectsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Project[];
+        setProjects(projectsData);
+      } catch (err) {
+        console.error('Error fetching projects:', err);
+      }
+    };
 
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => setSettings(data));
+    const fetchSettings = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'main');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setSettings(docSnap.data());
+        }
+      } catch (err) {
+        console.error('Error fetching settings:', err);
+      }
+    };
+
+    fetchProjects();
+    fetchSettings();
   }, []);
 
   const scroll = (direction: 'left' | 'right') => {
