@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ChevronLeft } from 'lucide-react';
 import { Project } from '../types';
-import { db, doc, onSnapshot } from '../firebase';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -12,16 +11,21 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (!id) return;
-    const unsubscribe = onSnapshot(doc(db, 'projects', id), (doc) => {
-      if (doc.exists()) {
-        setProject({ id: doc.id, ...doc.data() } as any as Project);
-      } else {
+    setLoading(true);
+    fetch(`/api/projects/${id}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Project not found');
+        return res.json();
+      })
+      .then(data => {
+        setProject(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
         setProject(null);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+        setLoading(false);
+      });
   }, [id]);
 
   const getEmbedUrl = (url: string) => {

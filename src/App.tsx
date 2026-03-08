@@ -15,8 +15,6 @@ import ProjectDetail from './pages/ProjectDetail';
 import Admin from './pages/Admin';
 import { cn } from './lib/utils';
 
-import { db, doc, onSnapshot } from './firebase';
-
 function Navbar({ settings }: { settings: any }) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
@@ -97,13 +95,45 @@ export default function App() {
   const [settings, setSettings] = useState<any>({});
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'site'), (doc) => {
-      if (doc.exists()) {
-        setSettings(doc.data());
-      }
-    });
+    const fetchSettings = () => {
+      fetch('/api/settings')
+        .then(res => res.json())
+        .then(data => setSettings(data));
+    };
+    fetchSettings();
+    // Listen for settings updates from admin
+    window.addEventListener('settingsUpdated', fetchSettings);
+    return () => window.removeEventListener('settingsUpdated', fetchSettings);
+  }, []);
 
-    return () => unsubscribe();
+  // Admin access gimmick: Type 'admin' to redirect
+  useEffect(() => {
+    let keys: string[] = [];
+    let timeout: any;
+    const target = 'admin';
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input/textarea
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+
+      clearTimeout(timeout);
+      keys.push(e.key.toLowerCase());
+      keys = keys.slice(-target.length);
+      
+      if (keys.join('') === target) {
+        window.location.href = '/admin';
+      }
+
+      timeout = setTimeout(() => {
+        keys = [];
+      }, 2000); // Clear buffer after 2 seconds of inactivity
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      clearTimeout(timeout);
+    };
   }, []);
 
   return (
@@ -123,7 +153,10 @@ export default function App() {
         
         <footer className="px-6 py-12 md:px-12 border-t border-white/10 flex flex-col md:flex-row justify-between items-end gap-12">
           <div className="flex flex-col gap-8 md:flex-row md:gap-24">
-            <div className="space-y-2">
+            <div 
+              className="space-y-2 cursor-default select-none"
+              onDoubleClick={() => window.location.href = '/admin'}
+            >
               <p className="text-[10px] uppercase tracking-[0.2em] text-brand opacity-60">copyright</p>
               <div className="text-xs font-medium leading-relaxed">
                 ©2026 cuni<br />

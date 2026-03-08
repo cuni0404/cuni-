@@ -3,23 +3,18 @@ import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { Layout } from 'lucide-react';
 import { Project } from '../types';
-import { db, collection, query, orderBy, onSnapshot } from '../firebase';
 
 export default function Work() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [filter, setFilter] = useState('ALL');
 
   useEffect(() => {
-    const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const projectsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as any as Project[];
-      setProjects(projectsData);
-    });
-
-    return () => unsubscribe();
+    fetch('/api/projects')
+      .then(res => res.json())
+      .then(data => {
+        setProjects(data);
+      })
+      .catch(err => console.error(err));
   }, []);
 
   const categories = ['ALL', ...Array.from(new Set(projects.map(p => p.category)))];

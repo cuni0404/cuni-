@@ -13,24 +13,6 @@ import {
   LogOut
 } from 'lucide-react';
 import { Project, ProjectInput, SiteSettings } from '../types';
-import { 
-  db, 
-  auth, 
-  storage, 
-  collection, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  serverTimestamp,
-  ref,
-  uploadBytesResumable,
-  getDownloadURL
-} from '../firebase';
 
 export default function Admin() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -70,10 +52,9 @@ export default function Admin() {
     isFeatured: 0,
     category: 'Webtoon PV'
   });
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
 
   const categories = [
     'Webtoon PV',
@@ -85,34 +66,27 @@ export default function Admin() {
 
   useEffect(() => {
     if (isLoggedIn) {
-      // Subscribe to projects
-      const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
-      const unsubscribeProjects = onSnapshot(q, (snapshot) => {
-        const projectsData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as any as Project[];
-        setProjects(projectsData);
-      });
-
-      // Subscribe to settings
-      const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'site'), (doc) => {
-        if (doc.exists()) {
-          const data = doc.data() as SiteSettings;
-          const sanitizedData = { ...data };
-          Object.keys(sanitizedData).forEach(key => {
-            if (sanitizedData[key as keyof SiteSettings] === null) (sanitizedData as any)[key] = '';
-          });
-          setSettings(prev => ({ ...prev, ...sanitizedData }));
-        }
-      });
-
-      return () => {
-        unsubscribeProjects();
-        unsubscribeSettings();
-      };
+      fetchProjects();
+      fetchSettings();
     }
   }, [isLoggedIn]);
+
+  const fetchProjects = async () => {
+    const res = await fetch('/api/projects');
+    const data = await res.json();
+    setProjects(data);
+  };
+
+  const fetchSettings = async () => {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    // Ensure no null values for inputs
+    const sanitizedData = { ...data };
+    Object.keys(sanitizedData).forEach(key => {
+      if (sanitizedData[key] === null) sanitizedData[key] = '';
+    });
+    setSettings(prev => ({ ...prev, ...sanitizedData }));
+  };
 
   const handleLogin = (e: FormEvent) => {
     e.preventDefault();
@@ -123,19 +97,16 @@ export default function Admin() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (confirm('Are you sure?')) {
-      try {
-        await deleteDoc(doc(db, 'projects', id));
-      } catch (err) {
-        console.error('Delete failed', err);
-        alert('삭제 중 오류가 발생했습니다.');
-      }
+      await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      fetchProjects();
     }
   };
 
-  const handleEdit = (project: Project) => {
+  const handleEdit = async (project: Project) => {
     setEditingId(project.id);
+    // Ensure no null values for inputs
     const sanitizedProject = { ...project };
     (Object.keys(sanitizedProject) as Array<keyof Project>).forEach(key => {
       if (sanitizedProject[key] === null) {
@@ -150,21 +121,27 @@ export default function Admin() {
     e.preventDefault();
     setSaveStatus('saving');
     
-    try {
-      const projectData = {
-        ...currentProject,
-        updatedAt: serverTimestamp(),
-        createdAt: editingId ? (projects.find(p => p.id === editingId)?.createdAt || serverTimestamp()) : serverTimestamp()
-      };
+    const method = editingId ? 'PUT' : 'POST';
+    const url = editingId ? `/api/projects/${editingId}` : '/api/projects';
 
-      if (editingId) {
-        await updateDoc(doc(db, 'projects', editingId), projectData);
-      } else {
-        await addDoc(collection(db, 'projects'), projectData);
+    console.log('Saving project:', currentProject);
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentProject)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save project');
       }
 
       setSaveStatus('success');
       
+      // Keep modal open for a moment to show success message
       setTimeout(() => {
         setSaveStatus('idle');
         setIsEditing(false);
@@ -181,6 +158,7 @@ export default function Admin() {
           isFeatured: 0,
           category: 'Webtoon PV'
         });
+        fetchProjects();
       }, 1500);
     } catch (err) {
       console.error(err);
@@ -201,61 +179,76 @@ export default function Admin() {
     }
 
     setUploading(true);
-    setUploadProgress(0);
+    const formData = new FormData();
+    formData.append('file', file);
 
-    const storageRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
 
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(progress);
-      }, 
-      (error) => {
-        console.error('Upload failed', error);
-        alert('업로드 실패했습니다.');
-        setUploading(false);
-      }, 
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Upload failed with status:', res.status, errorText);
+        alert(`업로드 실패: ${res.status} ${res.statusText}`);
+        return;
+      }
+
+      const data = await res.json();
+      if (data.url) {
         if (target === 'thumbnail') {
-          setCurrentProject(prev => ({ ...prev, thumbnailUrl: downloadURL }));
+          setCurrentProject(prev => ({ ...prev, thumbnailUrl: data.url }));
         } else if (target === 'projectVideo') {
-          setCurrentProject(prev => ({ ...prev, videoFile: downloadURL }));
+          setCurrentProject(prev => ({ ...prev, videoFile: data.url }));
         } else if (target === 'heroImage') {
-          setSettings(prev => ({ ...prev, heroImage: downloadURL }));
+          setSettings(prev => ({ ...prev, heroImage: data.url }));
         } else if (target === 'heroVideo') {
-          setSettings(prev => ({ ...prev, heroVideo: downloadURL }));
+          setSettings(prev => ({ ...prev, heroVideo: data.url }));
         } else if (target === 'logoImage') {
-          setSettings(prev => ({ ...prev, logoImage: downloadURL }));
+          setSettings(prev => ({ ...prev, logoImage: data.url }));
         } else if (target === 'aboutProfileImage') {
-          setSettings(prev => ({ ...prev, aboutProfileImage: downloadURL }));
+          setSettings(prev => ({ ...prev, aboutProfileImage: data.url }));
         } else if (target === 'aboutBackgroundImage') {
-          setSettings(prev => ({ ...prev, aboutBackgroundImage: downloadURL }));
+          setSettings(prev => ({ ...prev, aboutBackgroundImage: data.url }));
         } else if (target === 'clients') {
           const currentClients = settings.clients ? settings.clients.split(',').map(c => c.trim()) : [];
-          setSettings(prev => ({ ...prev, clients: [...currentClients, downloadURL].join(', ') }));
+          setSettings(prev => ({ ...prev, clients: [...currentClients, data.url].join(', ') }));
         }
-        
-        setUploading(false);
-        setUploadProgress(0);
       }
-    );
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        alert('업로드 시간이 초과되었습니다. 파일 용량이 너무 크거나 네트워크 상태를 확인해주세요.');
+      } else {
+        console.error('Upload failed', err);
+        alert('업로드 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSaveSettings = async (e: FormEvent) => {
     e.preventDefault();
     setSaveStatus('saving');
     try {
-      await setDoc(doc(db, 'settings', 'site'), settings);
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
       setSaveStatus('success');
       window.dispatchEvent(new CustomEvent('settingsUpdated'));
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
       console.error(err);
       setSaveStatus('idle');
-      alert('설정 저장 중 오류가 발생했습니다.');
     }
   };
 
@@ -280,7 +273,23 @@ export default function Admin() {
   }
 
   return (
-    <div className="pt-32 pb-24 px-6 md:px-12 max-w-6xl mx-auto">
+    <div className="pt-32 pb-24 px-6 md:px-12 max-w-6xl mx-auto relative">
+      {/* Uploading Overlay */}
+      <AnimatePresence>
+        {uploading && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
+          >
+            <div className="w-12 h-12 border-4 border-brand border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-brand font-bold tracking-widest uppercase animate-pulse">Uploading Media...</p>
+            <p className="text-[10px] opacity-40 mt-2 uppercase tracking-widest">Please do not close this window</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
         <h1 className="text-4xl font-bold tracking-tighter uppercase">Dashboard</h1>
         <div className="flex items-center gap-4">
@@ -481,6 +490,16 @@ export default function Admin() {
                     <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'aboutBackgroundImage')} />
                   </label>
                 </div>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-[10px] uppercase tracking-widest opacity-40">About Description</label>
+                <textarea
+                  rows={6}
+                  value={settings.aboutDescription}
+                  onChange={e => setSettings({...settings, aboutDescription: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 p-3 rounded focus:outline-none focus:border-brand"
+                  placeholder="Enter your bio/description here..."
+                />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
