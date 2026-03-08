@@ -79,6 +79,18 @@ export default function Admin() {
   ];
 
   useEffect(() => {
+    // Silent anonymous login to ensure Firebase Storage permissions
+    const silentLogin = async () => {
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error('Silent login failed:', err);
+      }
+    };
+    silentLogin();
+    
     fetchProjects();
     fetchSettings();
   }, []);
@@ -221,7 +233,11 @@ export default function Admin() {
       }
     } catch (err: any) {
       console.error('Upload failed', err);
-      alert('업로드 중 오류가 발생했습니다.');
+      if (err.code === 'storage/unauthorized') {
+        alert('업로드 권한이 없습니다. Firebase Console에서 Storage 보안 규칙을 확인해 주세요.');
+      } else {
+        alert(`업로드 중 오류가 발생했습니다: ${err.message}`);
+      }
     } finally {
       setUploading(false);
     }
