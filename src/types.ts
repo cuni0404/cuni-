@@ -10,6 +10,7 @@ export interface Project {
   description: string;
   isFeatured: number;
   category: string;
+  order_index?: number;
   images?: { id: string; imageUrl: string }[];
   createdAt?: any;
   updatedAt?: any;
@@ -33,6 +34,7 @@ export interface SiteSettings {
   contactX: string;
   contactYoutube: string;
   clients: string;
+  favicon: string;
 }
 
 export type ProjectInput = Omit<Project, 'id' | 'images'> & {

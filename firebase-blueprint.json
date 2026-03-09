@@ -15,6 +15,7 @@
         "description": { "type": "string", "description": "Project description" },
         "isFeatured": { "type": "integer", "description": "1 if featured on home, 0 otherwise" },
         "category": { "type": "string", "description": "Project category" },
+        "order_index": { "type": "integer", "description": "Manual display order" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
       },
       "required": ["title", "category", "thumbnailUrl"]
@@ -40,7 +41,8 @@
         "contactInstagram": { "type": "string" },
         "contactX": { "type": "string" },
         "contactYoutube": { "type": "string" },
-        "clients": { "type": "string" }
+        "clients": { "type": "string" },
+        "favicon": { "type": "string", "description": "Browser tab icon URL" }
       }
     }
   },

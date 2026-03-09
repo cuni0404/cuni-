@@ -25,7 +25,8 @@ db.exec(`
     thumbnailUrl TEXT,
     description TEXT,
     isFeatured INTEGER DEFAULT 0,
-    category TEXT NOT NULL
+    category TEXT NOT NULL,
+    order_index INTEGER DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS settings (
@@ -46,7 +47,8 @@ db.exec(`
     contactInstagram TEXT,
     contactX TEXT,
     contactYoutube TEXT,
-    clients TEXT
+    clients TEXT,
+    favicon TEXT
   );
 
   INSERT OR IGNORE INTO settings (id) VALUES (1);
@@ -88,7 +90,7 @@ async function startServer() {
 
   // API Routes
   app.get("/api/projects", (req, res) => {
-    const projects = db.prepare("SELECT * FROM projects ORDER BY id DESC").all();
+    const projects = db.prepare("SELECT * FROM projects ORDER BY order_index ASC, id DESC").all();
     res.json(projects);
   });
 
@@ -100,11 +102,30 @@ async function startServer() {
 
   app.post("/api/projects", (req, res) => {
     const { title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category } = req.body;
+    
+    // Get max order_index
+    const maxOrder = db.prepare("SELECT MAX(order_index) as max_order FROM projects").get() as any;
+    const nextOrder = (maxOrder?.max_order || 0) + 1;
+
     const info = db.prepare(`
-      INSERT INTO projects (title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category);
+      INSERT INTO projects (title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category, order_index)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category, nextOrder);
     res.json({ id: info.lastInsertRowid });
+  });
+
+  app.post("/api/projects/reorder", (req, res) => {
+    const { orders } = req.body; // Array of { id: number, order_index: number }
+    const update = db.prepare("UPDATE projects SET order_index = ? WHERE id = ?");
+    
+    const transaction = db.transaction((items) => {
+      for (const item of items) {
+        update.run(item.order_index, item.id);
+      }
+    });
+
+    transaction(orders);
+    res.json({ success: true });
   });
 
   app.put("/api/projects/:id", (req, res) => {

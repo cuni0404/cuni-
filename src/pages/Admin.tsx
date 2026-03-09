@@ -10,10 +10,12 @@ import {
   Layout, 
   Upload, 
   CheckCircle2,
-  LogOut
+  LogOut,
+  GripVertical
 } from 'lucide-react';
 import { Project, ProjectInput, SiteSettings } from '../types';
 import { db, auth } from '../firebase';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { 
   collection, 
   getDocs, 
@@ -48,7 +50,8 @@ export default function Admin() {
     contactInstagram: '',
     contactX: '',
     contactYoutube: '',
-    clients: ''
+    clients: '',
+    favicon: ''
   });
   const [activeTab, setActiveTab] = useState<'projects' | 'settings'>('projects');
   
@@ -96,12 +99,22 @@ export default function Admin() {
 
   const fetchProjects = async () => {
     try {
-      const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
+      const q = query(collection(db, 'projects'), orderBy('order_index', 'asc'));
       const querySnapshot = await getDocs(q);
       const projectsData = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      })) as Project[];
+      })) as any as Project[];
+      
+      // If none have order_index, sort by createdAt desc as fallback
+      if (projectsData.every(p => p.order_index === undefined || p.order_index === 0)) {
+        projectsData.sort((a, b) => {
+          const dateA = a.createdAt?.seconds || 0;
+          const dateB = b.createdAt?.seconds || 0;
+          return dateB - dateA;
+        });
+      }
+
       setProjects(projectsData);
     } catch (err) {
       console.error('Error fetching projects:', err);
@@ -250,6 +263,8 @@ export default function Admin() {
         } else if (target === 'clients') {
           const currentClients = settings.clients ? settings.clients.split(',').map(c => c.trim()) : [];
           setSettings(prev => ({ ...prev, clients: [...currentClients, downloadURL].join(', ') }));
+        } else if (target === 'favicon') {
+          setSettings(prev => ({ ...prev, favicon: downloadURL }));
         }
       }
     } catch (err: any) {
@@ -266,11 +281,49 @@ export default function Admin() {
     try {
       await setDoc(doc(db, 'settings', 'main'), settings);
       setSaveStatus('success');
+      
+      // Update favicon in head
+      if (settings.favicon) {
+        let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.getElementsByTagName('head')[0].appendChild(link);
+        }
+        link.href = settings.favicon;
+      }
+
       window.dispatchEvent(new CustomEvent('settingsUpdated'));
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
       console.error('Error saving settings:', err);
       setSaveStatus('idle');
+    }
+  };
+
+  const onDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+
+    const items: Project[] = Array.from(projects);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    setProjects(items);
+
+    // Save new order to database
+    try {
+      const orders = items.map((item, index) => ({
+        id: item.id,
+        order_index: index
+      }));
+
+      await fetch('/api/projects/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders })
+      });
+    } catch (err) {
+      console.error('Error reordering projects:', err);
     }
   };
 
@@ -340,31 +393,54 @@ export default function Admin() {
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-            {projects.map(project => (
-              <div key={project.id} className="glass p-6 rounded-xl flex justify-between items-center">
-                <div className="flex gap-6 items-center">
-                  {project.thumbnailUrl ? (
-                    <img src={project.thumbnailUrl} className="w-24 h-16 object-cover rounded" alt="" />
-                  ) : (
-                    <div className="w-24 h-16 bg-white/5 rounded flex items-center justify-center">
-                      <Layout size={16} className="opacity-20" />
-                    </div>
-                  )}
-                  <div>
-                    <h3 className="font-bold">{project.title}</h3>
-                    <p className="text-xs opacity-40 uppercase tracking-widest">{project.category} — {project.year}</p>
+            <DragDropContext onDragEnd={onDragEnd}>
+              <Droppable droppableId="projects">
+                {(provided) => (
+                  <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
+                    {projects.map((project, index) => {
+                      const DraggableComponent = Draggable as any;
+                      return (
+                        <DraggableComponent key={project.id} draggableId={project.id.toString()} index={index}>
+                          {(provided: any) => (
+                            <div 
+                              ref={provided.innerRef} 
+                              {...provided.draggableProps} 
+                              className="glass p-6 rounded-xl flex justify-between items-center group"
+                            >
+                              <div className="flex gap-6 items-center">
+                                <div {...provided.dragHandleProps} className="opacity-20 group-hover:opacity-100 cursor-grab active:cursor-grabbing">
+                                  <GripVertical size={20} />
+                                </div>
+                                {project.thumbnailUrl ? (
+                                  <img src={project.thumbnailUrl} className="w-24 h-16 object-cover rounded" alt="" />
+                                ) : (
+                                  <div className="w-24 h-16 bg-white/5 rounded flex items-center justify-center">
+                                    <Layout size={16} className="opacity-20" />
+                                  </div>
+                                )}
+                                <div>
+                                  <h3 className="font-bold">{project.title}</h3>
+                                  <p className="text-xs opacity-40 uppercase tracking-widest">{project.category} — {project.year}</p>
+                                </div>
+                              </div>
+                              <div className="flex gap-4">
+                                <button onClick={() => handleEdit(project)} className="p-2 hover:bg-white/10 rounded transition-colors">
+                                  <Edit2 size={18} />
+                                </button>
+                                <button onClick={() => handleDelete(project.id.toString())} className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors">
+                                  <Trash2 size={18} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </DraggableComponent>
+                      );
+                    })}
+                    {provided.placeholder}
                   </div>
-                </div>
-                <div className="flex gap-4">
-                  <button onClick={() => handleEdit(project)} className="p-2 hover:bg-white/10 rounded transition-colors">
-                    <Edit2 size={18} />
-                  </button>
-                  <button onClick={() => handleDelete(project.id)} className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors">
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-            ))}
+                )}
+              </Droppable>
+            </DragDropContext>
           </div>
         </div>
       ) : (
@@ -391,6 +467,27 @@ export default function Admin() {
                   <label className="cursor-pointer bg-white/10 hover:bg-white/20 px-4 py-3 rounded flex items-center gap-2 transition-colors">
                     <Upload size={14} />
                     <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logoImage')} />
+                  </label>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-widest opacity-40">Favicon (Browser Tab Icon)</label>
+                <div className="flex gap-4">
+                  <div className="flex-1 space-y-2">
+                    <input
+                      value={settings.favicon}
+                      onChange={e => setSettings({...settings, favicon: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 p-3 rounded focus:outline-none focus:border-brand"
+                    />
+                    {settings.favicon && (
+                      <div className="w-10 h-10 rounded-full overflow-hidden border border-white/10">
+                        <img src={settings.favicon} alt="Favicon Preview" className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                  </div>
+                  <label className="cursor-pointer bg-white/10 hover:bg-white/20 px-4 py-3 rounded flex items-center gap-2 transition-colors h-fit">
+                    <Upload size={14} />
+                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'favicon')} />
                   </label>
                 </div>
               </div>

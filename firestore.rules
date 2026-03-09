@@ -2,7 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper functions
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -12,14 +14,20 @@ service cloud.firestore {
         (request.auth.token.email == "nik75687@gmail.com" && request.auth.token.email_verified == true);
     }
 
+    // ===============================================================
     // Projects collection
+    // ===============================================================
     match /projects/{projectId} {
-      allow read, write: if true; // Publicly readable and writable
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
+    // ===============================================================
     // Settings collection
+    // ===============================================================
     match /settings/{settingId} {
-      allow read, write: if true; // Publicly readable and writable
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

@@ -18,14 +18,24 @@ export default function Home() {
         const q = query(
           collection(db, 'projects'), 
           where('isFeatured', '==', 1),
-          orderBy('createdAt', 'desc'),
+          orderBy('order_index', 'asc'),
           limit(6)
         );
         const querySnapshot = await getDocs(q);
-        const projectsData = querySnapshot.docs.map(doc => ({
+        let projectsData = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         })) as unknown as Project[];
+
+        // Fallback if order_index is not set
+        if (projectsData.every(p => p.order_index === undefined || p.order_index === 0)) {
+          projectsData.sort((a, b) => {
+            const dateA = a.createdAt?.seconds || 0;
+            const dateB = b.createdAt?.seconds || 0;
+            return dateB - dateA;
+          });
+        }
+
         setProjects(projectsData);
       } catch (err) {
         console.error('Error fetching projects:', err);
@@ -114,7 +124,7 @@ export default function Home() {
 
       {/* Latest Works Slider */}
       <section className="py-24 md:py-32">
-        <div className="px-6 md:px-12 flex justify-between items-end mb-12">
+        <div className="px-8 md:px-20 flex justify-between items-end mb-12">
           <div>
             <h3 className="text-4xl md:text-6xl font-display font-black tracking-tighter uppercase text-white">
               LATEST <span className="text-brand">WORKS</span>
@@ -138,7 +148,7 @@ export default function Home() {
 
         <div 
           ref={scrollRef}
-          className="flex gap-[5px] overflow-x-auto no-scrollbar px-6 md:px-12 snap-x snap-mandatory"
+          className="flex gap-[10px] overflow-x-auto no-scrollbar px-8 md:px-20 snap-x snap-mandatory"
         >
           {projects.map((project, index) => (
             <motion.div

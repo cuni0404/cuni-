@@ -13,12 +13,22 @@ export default function Work() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
+        const q = query(collection(db, 'projects'), orderBy('order_index', 'asc'));
         const querySnapshot = await getDocs(q);
-        const projectsData = querySnapshot.docs.map(doc => ({
+        let projectsData = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         })) as unknown as Project[];
+
+        // Fallback if order_index is not set
+        if (projectsData.every(p => p.order_index === undefined || p.order_index === 0)) {
+          projectsData.sort((a, b) => {
+            const dateA = a.createdAt?.seconds || 0;
+            const dateB = b.createdAt?.seconds || 0;
+            return dateB - dateA;
+          });
+        }
+
         setProjects(projectsData);
       } catch (err) {
         console.error('Error fetching projects:', err);
@@ -61,7 +71,7 @@ export default function Work() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-10 gap-y-20">
         {filteredProjects.map((project, index) => (
           <motion.div
             key={project.id}
