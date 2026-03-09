@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { SiteSettings } from '../types';
-import { db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
 
 export default function About() {
   const [settings, setSettings] = useState<Partial<SiteSettings>>({});
@@ -10,11 +8,9 @@ export default function About() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'main');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setSettings(docSnap.data());
-        }
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        setSettings(data);
       } catch (err) {
         console.error('Error fetching settings:', err);
       }

@@ -4,8 +4,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Layout } from 'lucide-react';
 import { Project, SiteSettings } from '../types';
 import { cn } from '../lib/utils';
-import { db } from '../firebase';
-import { collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -15,28 +13,9 @@ export default function Home() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const q = query(
-          collection(db, 'projects'), 
-          where('isFeatured', '==', 1),
-          orderBy('order_index', 'asc'),
-          limit(6)
-        );
-        const querySnapshot = await getDocs(q);
-        let projectsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as unknown as Project[];
-
-        // Fallback if order_index is not set
-        if (projectsData.every(p => p.order_index === undefined || p.order_index === 0)) {
-          projectsData.sort((a, b) => {
-            const dateA = a.createdAt?.seconds || 0;
-            const dateB = b.createdAt?.seconds || 0;
-            return dateB - dateA;
-          });
-        }
-
-        setProjects(projectsData);
+        const response = await fetch('/api/projects');
+        const data = await response.json();
+        setProjects(data.filter((p: Project) => p.isFeatured === 1).slice(0, 6));
       } catch (err) {
         console.error('Error fetching projects:', err);
       }
@@ -44,11 +23,9 @@ export default function Home() {
 
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'main');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setSettings(docSnap.data());
-        }
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        setSettings(data);
       } catch (err) {
         console.error('Error fetching settings:', err);
       }

@@ -101,17 +101,28 @@ async function startServer() {
   });
 
   app.post("/api/projects", (req, res) => {
-    const { title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category } = req.body;
-    
-    // Get max order_index
-    const maxOrder = db.prepare("SELECT MAX(order_index) as max_order FROM projects").get() as any;
-    const nextOrder = (maxOrder?.max_order || 0) + 1;
+    try {
+      const { title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category } = req.body;
+      
+      if (!title || !category) {
+        return res.status(400).json({ error: "Title and Category are required" });
+      }
 
-    const info = db.prepare(`
-      INSERT INTO projects (title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category, order_index)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category, nextOrder);
-    res.json({ id: info.lastInsertRowid });
+      // Get max order_index
+      const maxOrder = db.prepare("SELECT MAX(order_index) as max_order FROM projects").get() as any;
+      const nextOrder = (maxOrder?.max_order || 0) + 1;
+
+      const info = db.prepare(`
+        INSERT INTO projects (title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category, order_index)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured || 0, category, nextOrder);
+      
+      console.log('Project created:', info.lastInsertRowid);
+      res.json({ id: info.lastInsertRowid });
+    } catch (error) {
+      console.error('Error creating project:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   app.post("/api/projects/reorder", (req, res) => {
@@ -129,13 +140,25 @@ async function startServer() {
   });
 
   app.put("/api/projects/:id", (req, res) => {
-    const { title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category } = req.body;
-    db.prepare(`
-      UPDATE projects 
-      SET title = ?, role = ?, client = ?, year = ?, videoUrl = ?, videoFile = ?, thumbnailUrl = ?, description = ?, isFeatured = ?, category = ?
-      WHERE id = ?
-    `).run(title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category, req.params.id);
-    res.json({ success: true });
+    try {
+      const { title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured, category } = req.body;
+      
+      if (!title || !category) {
+        return res.status(400).json({ error: "Title and Category are required" });
+      }
+
+      db.prepare(`
+        UPDATE projects 
+        SET title = ?, role = ?, client = ?, year = ?, videoUrl = ?, videoFile = ?, thumbnailUrl = ?, description = ?, isFeatured = ?, category = ?
+        WHERE id = ?
+      `).run(title, role, client, year, videoUrl, videoFile, thumbnailUrl, description, isFeatured || 0, category, req.params.id);
+      
+      console.log('Project updated:', req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating project:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   app.delete("/api/projects/:id", (req, res) => {
@@ -149,12 +172,20 @@ async function startServer() {
   });
 
   app.post("/api/settings", (req, res) => {
-    const fields = Object.keys(req.body).filter(k => k !== 'id');
-    const values = fields.map(k => req.body[k]);
-    const setClause = fields.map(k => `${k} = ?`).join(", ");
-    
-    db.prepare(`UPDATE settings SET ${setClause} WHERE id = 1`).run(...values);
-    res.json({ success: true });
+    try {
+      const fields = Object.keys(req.body).filter(k => k !== 'id');
+      if (fields.length === 0) return res.json({ success: true });
+      
+      const values = fields.map(k => req.body[k]);
+      const setClause = fields.map(k => `${k} = ?`).join(", ");
+      
+      db.prepare(`UPDATE settings SET ${setClause} WHERE id = 1`).run(...values);
+      console.log('Settings updated');
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   app.get("/api/cloudinary-signature", (req, res) => {

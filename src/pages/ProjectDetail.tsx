@@ -3,8 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ChevronLeft } from 'lucide-react';
 import { Project } from '../types';
-import { db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -16,10 +14,10 @@ export default function ProjectDetail() {
     const fetchProject = async () => {
       setLoading(true);
       try {
-        const docRef = doc(db, 'projects', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setProject({ id: docSnap.id, ...docSnap.data() } as unknown as Project);
+        const response = await fetch(`/api/projects/${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setProject(data);
         } else {
           setProject(null);
         }

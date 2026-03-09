@@ -10,26 +10,10 @@ import {
   Layout, 
   Upload, 
   CheckCircle2,
-  LogOut,
   GripVertical
 } from 'lucide-react';
 import { Project, ProjectInput, SiteSettings } from '../types';
-import { db, auth } from '../firebase';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { 
-  collection, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  getDoc, 
-  setDoc,
-  query,
-  orderBy,
-  serverTimestamp
-} from 'firebase/firestore';
-import { signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default function Admin() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -66,9 +50,11 @@ export default function Admin() {
     thumbnailUrl: '',
     description: '',
     isFeatured: 0,
-    category: 'Webtoon PV'
+    category: 'Webtoon PV',
+    images: []
   });
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
   const [uploading, setUploading] = useState(false);
 
@@ -81,41 +67,15 @@ export default function Admin() {
   ];
 
   useEffect(() => {
-    // Silent anonymous login to ensure Firebase Storage permissions
-    const silentLogin = async () => {
-      try {
-        if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error('Silent login failed:', err);
-      }
-    };
-    silentLogin();
-    
     fetchProjects();
     fetchSettings();
   }, []);
 
   const fetchProjects = async () => {
     try {
-      const q = query(collection(db, 'projects'), orderBy('order_index', 'asc'));
-      const querySnapshot = await getDocs(q);
-      const projectsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as any as Project[];
-      
-      // If none have order_index, sort by createdAt desc as fallback
-      if (projectsData.every(p => p.order_index === undefined || p.order_index === 0)) {
-        projectsData.sort((a, b) => {
-          const dateA = a.createdAt?.seconds || 0;
-          const dateB = b.createdAt?.seconds || 0;
-          return dateB - dateA;
-        });
-      }
-
-      setProjects(projectsData);
+      const response = await fetch('/api/projects');
+      const data = await response.json();
+      setProjects(data);
     } catch (err) {
       console.error('Error fetching projects:', err);
     }
@@ -123,10 +83,9 @@ export default function Admin() {
 
   const fetchSettings = async () => {
     try {
-      const docRef = doc(db, 'settings', 'main');
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+      const response = await fetch('/api/settings');
+      const data = await response.json();
+      if (data) {
         const sanitizedData = { ...data };
         Object.keys(sanitizedData).forEach(key => {
           if (sanitizedData[key] === null) sanitizedData[key] = '';
@@ -138,14 +97,17 @@ export default function Admin() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure?')) {
-      try {
-        await deleteDoc(doc(db, 'projects', id));
+  const handleDelete = async (id: number) => {
+    try {
+      const response = await fetch(`/api/projects/${id}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        setDeleteConfirmId(null);
         fetchProjects();
-      } catch (err) {
-        console.error('Error deleting project:', err);
       }
+    } catch (err) {
+      console.error('Error deleting project:', err);
     }
   };
 
@@ -166,18 +128,16 @@ export default function Admin() {
     setSaveStatus('saving');
     
     try {
-      if (editingId) {
-        const docRef = doc(db, 'projects', editingId);
-        await updateDoc(docRef, {
-          ...currentProject,
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        await addDoc(collection(db, 'projects'), {
-          ...currentProject,
-          createdAt: serverTimestamp()
-        });
-      }
+      const url = editingId ? `/api/projects/${editingId}` : '/api/projects';
+      const method = editingId ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentProject)
+      });
+
+      if (!response.ok) throw new Error('Failed to save project');
 
       setSaveStatus('success');
       
@@ -195,13 +155,13 @@ export default function Admin() {
           thumbnailUrl: '',
           description: '',
           isFeatured: 0,
-          category: 'Webtoon PV'
+          category: 'Webtoon PV',
+          images: []
         });
         fetchProjects();
       }, 1500);
     } catch (err) {
       console.error('Error saving project:', err);
-      alert('프로젝트 저장 중 오류가 발생했습니다.');
       setSaveStatus('idle');
     }
   };
@@ -279,7 +239,14 @@ export default function Admin() {
     e.preventDefault();
     setSaveStatus('saving');
     try {
-      await setDoc(doc(db, 'settings', 'main'), settings);
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+
+      if (!response.ok) throw new Error('Failed to save settings');
+
       setSaveStatus('success');
       
       // Update favicon in head
@@ -427,7 +394,7 @@ export default function Admin() {
                                 <button onClick={() => handleEdit(project)} className="p-2 hover:bg-white/10 rounded transition-colors">
                                   <Edit2 size={18} />
                                 </button>
-                                <button onClick={() => handleDelete(project.id.toString())} className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors">
+                                <button onClick={() => setDeleteConfirmId(project.id)} className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors">
                                   <Trash2 size={18} />
                                 </button>
                               </div>
@@ -442,6 +409,39 @@ export default function Admin() {
               </Droppable>
             </DragDropContext>
           </div>
+
+          {/* Delete Confirmation Modal */}
+          <AnimatePresence>
+            {deleteConfirmId && (
+              <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="bg-[#0a0a0a] border border-white/10 p-8 rounded-2xl max-w-sm w-full text-center"
+                >
+                  <h3 className="text-xl font-bold mb-4 uppercase tracking-tighter">Delete Project?</h3>
+                  <p className="text-xs opacity-40 mb-8 uppercase tracking-widest leading-relaxed">
+                    This action cannot be undone.<br/>Are you sure you want to delete this project?
+                  </p>
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => setDeleteConfirmId(null)}
+                      className="flex-1 bg-white/5 hover:bg-white/10 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(deleteConfirmId)}
+                      className="flex-1 bg-red-500 text-white py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest hover:bg-red-600 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       ) : (
         <form onSubmit={handleSaveSettings} className="space-y-12 max-w-3xl">

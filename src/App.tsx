@@ -13,8 +13,6 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import ProjectDetail from './pages/ProjectDetail';
 import Admin from './pages/Admin';
-import { db } from './firebase';
-import { doc, getDoc } from 'firebase/firestore';
 import { cn } from './lib/utils';
 
 function Navbar({ settings }: { settings: any }) {
@@ -101,11 +99,9 @@ function AppContent() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'main');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setSettings(docSnap.data());
-        }
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        setSettings(data);
       } catch (err) {
         console.error('Error fetching settings:', err);
       }
