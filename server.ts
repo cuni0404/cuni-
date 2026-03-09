@@ -3,6 +3,8 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import Database from "better-sqlite3";
 import fs from "fs";
 
@@ -56,18 +58,23 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Multer config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
+// Cloudinary config
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+const cloudinaryStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'portfolio_uploads',
+    resource_type: 'auto',
+  } as any,
+});
+
 const upload = multer({ 
-  storage,
+  storage: cloudinaryStorage,
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 });
 
@@ -132,8 +139,8 @@ async function startServer() {
   app.post("/api/upload", upload.single("file"), (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-      console.log('File uploaded successfully:', req.file.filename);
-      res.json({ url: `/uploads/${req.file.filename}` });
+      console.log('File uploaded to Cloudinary successfully:', (req.file as any).path);
+      res.json({ url: (req.file as any).path });
     } catch (error) {
       console.error('Upload handler error:', error);
       res.status(500).json({ error: "Internal server error during upload" });

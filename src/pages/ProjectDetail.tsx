@@ -19,7 +19,7 @@ export default function ProjectDetail() {
         const docRef = doc(db, 'projects', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setProject({ id: docSnap.id, ...docSnap.data() } as Project);
+          setProject({ id: docSnap.id, ...docSnap.data() } as unknown as Project);
         } else {
           setProject(null);
         }

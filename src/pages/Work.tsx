@@ -18,7 +18,7 @@ export default function Work() {
         const projectsData = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
-        })) as Project[];
+        })) as unknown as Project[];
         setProjects(projectsData);
       } catch (err) {
         console.error('Error fetching projects:', err);

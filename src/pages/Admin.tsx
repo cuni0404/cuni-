@@ -13,7 +13,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { Project, ProjectInput, SiteSettings } from '../types';
-import { db, auth, storage } from '../firebase';
+import { db, auth } from '../firebase';
 import { 
   collection, 
   getDocs, 
@@ -27,7 +27,6 @@ import {
   orderBy,
   serverTimestamp
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
 
 export default function Admin() {
@@ -207,9 +206,20 @@ export default function Admin() {
     setUploading(true);
 
     try {
-      const storageRef = ref(storage, `uploads/${Date.now()}-${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+      const downloadURL = data.url;
       
       if (downloadURL) {
         if (target === 'thumbnail') {
@@ -233,11 +243,7 @@ export default function Admin() {
       }
     } catch (err: any) {
       console.error('Upload failed', err);
-      if (err.code === 'storage/unauthorized') {
-        alert('업로드 권한이 없습니다. Firebase Console에서 Storage 보안 규칙을 확인해 주세요.');
-      } else {
-        alert(`업로드 중 오류가 발생했습니다: ${err.message}`);
-      }
+      alert(`업로드 중 오류가 발생했습니다: ${err.message}`);
     } finally {
       setUploading(false);
     }
