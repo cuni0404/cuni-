@@ -13,6 +13,8 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import ProjectDetail from './pages/ProjectDetail';
 import Admin from './pages/Admin';
+import { db } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { cn } from './lib/utils';
 
 function Navbar({ settings }: { settings: any }) {
@@ -31,9 +33,11 @@ function Navbar({ settings }: { settings: any }) {
     <nav className="fixed top-0 left-0 w-full z-50 px-6 py-8 md:px-12 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent backdrop-blur-sm">
       <Link to="/" className="hover:opacity-70 transition-opacity">
         {settings.logoImage && settings.logoImage.trim() !== "" ? (
-          <img src={settings.logoImage} alt="Logo" className="h-8 w-auto object-contain" />
+          <div className="h-10 w-10 rounded-full overflow-hidden border border-white/10">
+            <img src={settings.logoImage} alt="Logo" className="h-full w-full object-cover" />
+          </div>
         ) : (
-          <span className="text-2xl font-bold tracking-tighter uppercase">{settings.logo || 'CUNI'}</span>
+          <span className="text-2xl font-bold tracking-tighter uppercase">{settings.logoText || 'CUNI'}</span>
         )}
       </Link>
 
@@ -99,9 +103,30 @@ function AppContent() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const response = await fetch('/api/settings');
-        const data = await response.json();
-        setSettings(data);
+        const docRef = doc(db, 'settings', 'main');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setSettings(data);
+          
+          // Update document title
+          if (data.logoText) {
+            document.title = `${data.logoText} works`;
+          } else {
+            document.title = 'cuni works';
+          }
+
+          // Update favicon if logoImage exists
+          if (data.logoImage) {
+            let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+            if (!link) {
+              link = document.createElement('link');
+              link.rel = 'icon';
+              document.getElementsByTagName('head')[0].appendChild(link);
+            }
+            link.href = data.logoImage;
+          }
+        }
       } catch (err) {
         console.error('Error fetching settings:', err);
       }

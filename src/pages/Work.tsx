@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { Layout } from 'lucide-react';
 import { Project } from '../types';
+import { db } from '../firebase';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
 export default function Work() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -11,9 +13,13 @@ export default function Work() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const response = await fetch('/api/projects');
-        const data = await response.json();
-        setProjects(data);
+        const q = query(collection(db, 'projects'), orderBy('order', 'asc'));
+        const querySnapshot = await getDocs(q);
+        const projectsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as unknown as Project[];
+        setProjects(projectsData);
       } catch (err) {
         console.error('Error fetching projects:', err);
       }
@@ -29,33 +35,29 @@ export default function Work() {
 
   return (
     <div className="pt-32 pb-24 px-6 md:px-12 min-h-screen">
-      <header className="mb-16 md:mb-24">
+      <header className="mb-16 md:mb-24 max-w-7xl mx-auto">
         <h1 className="text-6xl md:text-8xl font-bold tracking-tighter mb-8">
           W<span className="text-brand">O</span>RK
         </h1>
         
-        <div className="flex flex-wrap gap-6 md:gap-12">
+        <div className="flex flex-wrap gap-4 md:gap-6 justify-start">
           {categories.map(cat => (
             <button
               key={cat}
               onClick={() => setFilter(cat)}
-              className={`text-[10px] tracking-[0.3em] uppercase transition-all relative py-2 ${
-                filter === cat ? 'opacity-100 text-brand font-bold' : 'opacity-30 hover:opacity-60'
+              className={`text-[10px] tracking-[0.2em] uppercase transition-all relative px-6 py-3 rounded-full border ${
+                filter === cat 
+                  ? 'bg-brand text-black border-brand font-bold shadow-[0_0_20px_rgba(0,255,0,0.2)]' 
+                  : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white hover:border-white/20'
               }`}
             >
               {cat}
-              {filter === cat && (
-                <motion.div 
-                  layoutId="activeFilter"
-                  className="absolute bottom-0 left-0 right-0 h-[2px] bg-brand"
-                />
-              )}
             </button>
           ))}
         </div>
       </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-10 gap-y-20">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-10">
         {filteredProjects.map((project, index) => (
           <motion.div
             key={project.id}
@@ -64,20 +66,20 @@ export default function Work() {
             transition={{ delay: index * 0.05 }}
             className="group"
           >
-            <Link to={`/work/${project.id}`} className="block aspect-video overflow-hidden bg-white/5 relative">
+            <Link to={`/work/${project.id}`} className="block aspect-video overflow-hidden bg-white/5 relative rounded-2xl border border-white/5">
               {project.thumbnailUrl ? (
                 <img 
                   src={`${project.thumbnailUrl}?v=${project.id}`} 
                   alt={project.title}
-                  className="w-full h-full object-cover transition-transform duration-[400ms] ease-in-out group-hover:scale-105"
+                  className="w-full h-full object-cover transition-transform duration-[400ms] ease-in-out group-hover:scale-105 rounded-2xl"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Layout size={48} className="opacity-10" />
+                <div className="w-full h-full flex items-center justify-center rounded-2xl">
+                  <Layout size={44} className="opacity-10" />
                 </div>
               )}
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-[400ms] ease-in-out flex flex-col items-center justify-center p-6 text-center">
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-[400ms] ease-in-out flex flex-col items-center justify-center p-6 text-center rounded-2xl">
                 <h4 className="text-xl font-bold tracking-tighter uppercase mb-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-[400ms] ease-out">
                   {project.title}
                 </h4>

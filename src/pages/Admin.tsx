@@ -10,12 +10,80 @@ import {
   Layout, 
   Upload, 
   CheckCircle2,
+  LogOut,
   GripVertical
 } from 'lucide-react';
-import { Project, ProjectInput, SiteSettings } from '../types';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { Project, ProjectInput, SiteSettings } from '../types';
+import { db, auth } from '../firebase';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  getDoc, 
+  setDoc,
+  query,
+  orderBy,
+  serverTimestamp
+} from 'firebase/firestore';
+import { signInAnonymously, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export default function Admin() {
+  const [user, setUser] = useState(auth.currentUser);
   const [projects, setProjects] = useState<Project[]>([]);
   const [settings, setSettings] = useState<SiteSettings>({
     logoText: '',
@@ -34,8 +102,7 @@ export default function Admin() {
     contactInstagram: '',
     contactX: '',
     contactYoutube: '',
-    clients: '',
-    favicon: ''
+    clients: ''
   });
   const [activeTab, setActiveTab] = useState<'projects' | 'settings'>('projects');
   
@@ -50,11 +117,9 @@ export default function Admin() {
     thumbnailUrl: '',
     description: '',
     isFeatured: 0,
-    category: 'Webtoon PV',
-    images: []
+    category: 'Webtoon PV'
   });
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
   const [uploading, setUploading] = useState(false);
 
@@ -67,25 +132,110 @@ export default function Admin() {
   ];
 
   useEffect(() => {
-    fetchProjects();
-    fetchSettings();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      if (user) {
+        fetchProjects();
+        fetchSettings();
+      }
+    });
+
+    // Silent anonymous login if not logged in
+    const silentLogin = async () => {
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error('Silent login failed:', err);
+      }
+    };
+    silentLogin();
+    
+    return () => unsubscribe();
   }, []);
 
-  const fetchProjects = async () => {
+  const handleGoogleLogin = async () => {
     try {
-      const response = await fetch('/api/projects');
-      const data = await response.json();
-      setProjects(data);
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
     } catch (err) {
-      console.error('Error fetching projects:', err);
+      console.error('Login failed:', err);
+      alert('로그인에 실패했습니다.');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      // Re-login anonymously to maintain basic access if needed
+      await signInAnonymously(auth);
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
+  };
+
+  const fetchProjects = async () => {
+    const path = 'projects';
+    try {
+      const q = query(collection(db, path), orderBy('order', 'asc'));
+      const querySnapshot = await getDocs(q);
+      const projectsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Project[];
+      
+      // If any project doesn't have an order, assign one based on createdAt
+      if (projectsData.some(p => p.order === undefined)) {
+        const updatedProjects = projectsData.map((p, idx) => ({
+          ...p,
+          order: p.order ?? idx
+        }));
+        setProjects(updatedProjects);
+      } else {
+        setProjects(projectsData);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, path);
+    }
+  };
+
+  const onDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+
+    const items = Array.from(projects);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    // Optimistic update
+    const updatedItems = items.map((item: any, index: number) => ({
+      ...item,
+      order: index
+    })) as Project[];
+    setProjects(updatedItems);
+
+    // Update Firestore
+    const path = 'projects';
+    try {
+      const batch: Promise<void>[] = [];
+      updatedItems.forEach((item) => {
+        const docRef = doc(db, path, item.id);
+        batch.push(updateDoc(docRef, { order: item.order }));
+      });
+      await Promise.all(batch);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+      fetchProjects(); // Revert on error
     }
   };
 
   const fetchSettings = async () => {
+    const path = 'settings/main';
     try {
-      const response = await fetch('/api/settings');
-      const data = await response.json();
-      if (data) {
+      const docRef = doc(db, 'settings', 'main');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
         const sanitizedData = { ...data };
         Object.keys(sanitizedData).forEach(key => {
           if (sanitizedData[key] === null) sanitizedData[key] = '';
@@ -93,21 +243,19 @@ export default function Admin() {
         setSettings(prev => ({ ...prev, ...sanitizedData }));
       }
     } catch (err) {
-      console.error('Error fetching settings:', err);
+      handleFirestoreError(err, OperationType.GET, path);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    try {
-      const response = await fetch(`/api/projects/${id}`, {
-        method: 'DELETE'
-      });
-      if (response.ok) {
-        setDeleteConfirmId(null);
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure?')) {
+      const path = `projects/${id}`;
+      try {
+        await deleteDoc(doc(db, 'projects', id));
         fetchProjects();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, path);
       }
-    } catch (err) {
-      console.error('Error deleting project:', err);
     }
   };
 
@@ -127,17 +275,23 @@ export default function Admin() {
     e.preventDefault();
     setSaveStatus('saving');
     
+    const path = editingId ? `projects/${editingId}` : 'projects';
     try {
-      const url = editingId ? `/api/projects/${editingId}` : '/api/projects';
-      const method = editingId ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentProject)
-      });
-
-      if (!response.ok) throw new Error('Failed to save project');
+      if (editingId) {
+        const docRef = doc(db, 'projects', editingId);
+        await updateDoc(docRef, {
+          ...currentProject,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Get max order
+        const maxOrder = projects.length > 0 ? Math.max(...projects.map(p => p.order ?? 0)) : -1;
+        await addDoc(collection(db, 'projects'), {
+          ...currentProject,
+          order: maxOrder + 1,
+          createdAt: serverTimestamp()
+        });
+      }
 
       setSaveStatus('success');
       
@@ -155,13 +309,12 @@ export default function Admin() {
           thumbnailUrl: '',
           description: '',
           isFeatured: 0,
-          category: 'Webtoon PV',
-          images: []
+          category: 'Webtoon PV'
         });
         fetchProjects();
       }, 1500);
     } catch (err) {
-      console.error('Error saving project:', err);
+      handleFirestoreError(err, editingId ? OperationType.UPDATE : OperationType.CREATE, path);
       setSaveStatus('idle');
     }
   };
@@ -223,8 +376,6 @@ export default function Admin() {
         } else if (target === 'clients') {
           const currentClients = settings.clients ? settings.clients.split(',').map(c => c.trim()) : [];
           setSettings(prev => ({ ...prev, clients: [...currentClients, downloadURL].join(', ') }));
-        } else if (target === 'favicon') {
-          setSettings(prev => ({ ...prev, favicon: downloadURL }));
         }
       }
     } catch (err: any) {
@@ -238,59 +389,15 @@ export default function Admin() {
   const handleSaveSettings = async (e: FormEvent) => {
     e.preventDefault();
     setSaveStatus('saving');
+    const path = 'settings/main';
     try {
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-
-      if (!response.ok) throw new Error('Failed to save settings');
-
+      await setDoc(doc(db, 'settings', 'main'), settings);
       setSaveStatus('success');
-      
-      // Update favicon in head
-      if (settings.favicon) {
-        let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
-        if (!link) {
-          link = document.createElement('link');
-          link.rel = 'icon';
-          document.getElementsByTagName('head')[0].appendChild(link);
-        }
-        link.href = settings.favicon;
-      }
-
       window.dispatchEvent(new CustomEvent('settingsUpdated'));
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
-      console.error('Error saving settings:', err);
+      handleFirestoreError(err, OperationType.WRITE, path);
       setSaveStatus('idle');
-    }
-  };
-
-  const onDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
-
-    const items: Project[] = Array.from(projects);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
-    setProjects(items);
-
-    // Save new order to database
-    try {
-      const orders = items.map((item, index) => ({
-        id: item.id,
-        order_index: index
-      }));
-
-      await fetch('/api/projects/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders })
-      });
-    } catch (err) {
-      console.error('Error reordering projects:', err);
     }
   };
 
@@ -315,6 +422,28 @@ export default function Admin() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
         <h1 className="text-4xl font-bold tracking-tighter uppercase">Dashboard</h1>
         <div className="flex items-center gap-4">
+          {user && !user.isAnonymous ? (
+            <div className="flex items-center gap-4">
+              <div className="text-right hidden md:block">
+                <p className="text-[10px] uppercase tracking-widest opacity-40">Logged in as</p>
+                <p className="text-xs font-bold">{user.email}</p>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors text-red-500"
+                title="Logout"
+              >
+                <LogOut size={20} />
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={handleGoogleLogin}
+              className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded font-bold text-xs uppercase tracking-widest hover:bg-brand transition-colors"
+            >
+              Admin Login
+            </button>
+          )}
           <div className="flex bg-white/5 p-1 rounded-lg">
             <button 
               onClick={() => setActiveTab('projects')}
@@ -359,89 +488,56 @@ export default function Admin() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            <DragDropContext onDragEnd={onDragEnd}>
-              <Droppable droppableId="projects">
-                {(provided) => (
-                  <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
-                    {projects.map((project, index) => {
-                      const DraggableComponent = Draggable as any;
-                      return (
-                        <DraggableComponent key={project.id} draggableId={project.id.toString()} index={index}>
-                          {(provided: any) => (
-                            <div 
-                              ref={provided.innerRef} 
-                              {...provided.draggableProps} 
-                              className="glass p-6 rounded-xl flex justify-between items-center group"
-                            >
-                              <div className="flex gap-6 items-center">
-                                <div {...provided.dragHandleProps} className="opacity-20 group-hover:opacity-100 cursor-grab active:cursor-grabbing">
-                                  <GripVertical size={20} />
-                                </div>
-                                {project.thumbnailUrl ? (
-                                  <img src={project.thumbnailUrl} className="w-24 h-16 object-cover rounded" alt="" />
-                                ) : (
-                                  <div className="w-24 h-16 bg-white/5 rounded flex items-center justify-center">
-                                    <Layout size={16} className="opacity-20" />
-                                  </div>
-                                )}
-                                <div>
-                                  <h3 className="font-bold">{project.title}</h3>
-                                  <p className="text-xs opacity-40 uppercase tracking-widest">{project.category} — {project.year}</p>
-                                </div>
-                              </div>
-                              <div className="flex gap-4">
-                                <button onClick={() => handleEdit(project)} className="p-2 hover:bg-white/10 rounded transition-colors">
-                                  <Edit2 size={18} />
-                                </button>
-                                <button onClick={() => setDeleteConfirmId(project.id)} className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors">
-                                  <Trash2 size={18} />
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </DraggableComponent>
-                      );
-                    })}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </DragDropContext>
-          </div>
-
-          {/* Delete Confirmation Modal */}
-          <AnimatePresence>
-            {deleteConfirmId && (
-              <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="bg-[#0a0a0a] border border-white/10 p-8 rounded-2xl max-w-sm w-full text-center"
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId="projects">
+              {(provided) => (
+                <div 
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
+                  className="grid grid-cols-1 gap-4"
                 >
-                  <h3 className="text-xl font-bold mb-4 uppercase tracking-tighter">Delete Project?</h3>
-                  <p className="text-xs opacity-40 mb-8 uppercase tracking-widest leading-relaxed">
-                    This action cannot be undone.<br/>Are you sure you want to delete this project?
-                  </p>
-                  <div className="flex gap-4">
-                    <button 
-                      onClick={() => setDeleteConfirmId(null)}
-                      className="flex-1 bg-white/5 hover:bg-white/10 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(deleteConfirmId)}
-                      className="flex-1 bg-red-500 text-white py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest hover:bg-red-600 transition-colors"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </motion.div>
-              </div>
-            )}
-          </AnimatePresence>
+                  {projects.map((project, index) => (
+                    // @ts-ignore
+                    <Draggable key={project.id} draggableId={project.id.toString()} index={index}>
+                      {(provided) => (
+                        <div 
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          className="glass p-6 rounded-xl flex justify-between items-center group"
+                        >
+                          <div className="flex gap-6 items-center">
+                            <div {...provided.dragHandleProps} className="opacity-20 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                              <GripVertical size={20} />
+                            </div>
+                            {project.thumbnailUrl ? (
+                              <img src={project.thumbnailUrl} className="w-24 h-16 object-cover rounded" alt="" />
+                            ) : (
+                              <div className="w-24 h-16 bg-white/5 rounded flex items-center justify-center">
+                                <Layout size={16} className="opacity-20" />
+                              </div>
+                            )}
+                            <div>
+                              <h3 className="font-bold">{project.title}</h3>
+                              <p className="text-xs opacity-40 uppercase tracking-widest">{project.category} — {project.year}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-4">
+                            <button onClick={() => handleEdit(project)} className="p-2 hover:bg-white/10 rounded transition-colors">
+                              <Edit2 size={18} />
+                            </button>
+                            <button onClick={() => handleDelete(project.id)} className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
         </div>
       ) : (
         <form onSubmit={handleSaveSettings} className="space-y-12 max-w-3xl">
@@ -467,27 +563,6 @@ export default function Admin() {
                   <label className="cursor-pointer bg-white/10 hover:bg-white/20 px-4 py-3 rounded flex items-center gap-2 transition-colors">
                     <Upload size={14} />
                     <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logoImage')} />
-                  </label>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest opacity-40">Favicon (Browser Tab Icon)</label>
-                <div className="flex gap-4">
-                  <div className="flex-1 space-y-2">
-                    <input
-                      value={settings.favicon}
-                      onChange={e => setSettings({...settings, favicon: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 p-3 rounded focus:outline-none focus:border-brand"
-                    />
-                    {settings.favicon && (
-                      <div className="w-10 h-10 rounded-full overflow-hidden border border-white/10">
-                        <img src={settings.favicon} alt="Favicon Preview" className="w-full h-full object-cover" />
-                      </div>
-                    )}
-                  </div>
-                  <label className="cursor-pointer bg-white/10 hover:bg-white/20 px-4 py-3 rounded flex items-center gap-2 transition-colors h-fit">
-                    <Upload size={14} />
-                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'favicon')} />
                   </label>
                 </div>
               </div>

@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A portfolio project item",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Project title" },
+        "role": { "type": "string", "description": "Role in project" },
+        "client": { "type": "string", "description": "Client name" },
+        "year": { "type": "string", "description": "Year of completion" },
+        "videoUrl": { "type": "string", "description": "External video URL (YouTube/Vimeo)" },
+        "videoFile": { "type": "string", "description": "Uploaded video file URL" },
+        "thumbnailUrl": { "type": "string", "description": "Thumbnail image URL" },
+        "description": { "type": "string", "description": "Project description" },
+        "isFeatured": { "type": "integer", "description": "1 if featured on home, 0 otherwise" },
+        "category": { "type": "string", "description": "Project category" },
+        "order": { "type": "integer", "description": "Sort order" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["title", "category", "thumbnailUrl"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Site-wide settings",
+      "type": "object",
+      "properties": {
+        "logoText": { "type": "string" },
+        "logoImage": { "type": "string" },
+        "heroTitle": { "type": "string" },
+        "heroSubtitle": { "type": "string" },
+        "heroImage": { "type": "string" },
+        "heroVideo": { "type": "string" },
+        "aboutTitle": { "type": "string" },
+        "aboutDescription": { "type": "string" },
+        "aboutProfileImage": { "type": "string" },
+        "aboutDescFontSize": { "type": "string" },
+        "aboutDescFontWeight": { "type": "string" },
+        "aboutBackgroundImage": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "contactInstagram": { "type": "string" },
+        "contactX": { "type": "string" },
+        "contactYoutube": { "type": "string" },
+        "clients": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/projects": {
+      "schema": "Project",
+      "description": "Collection of portfolio projects"
+    },
+    "/settings/main": {
+      "schema": "Settings",
+      "description": "Singleton document for site settings"
+    }
+  }
+}

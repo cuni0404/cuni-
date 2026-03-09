@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "nik75687@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidProject(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.category is string && data.category.size() > 0 &&
+             (data.thumbnailUrl == null || (data.thumbnailUrl is string && data.thumbnailUrl.size() < 1000));
+    }
+
+    function isValidSettings(data) {
+      return true; // Simple validation for settings for now
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Projects collection
+    match /projects/{projectId} {
+      allow read: if true;
+      allow write: if isAuthenticated(); // Allow any authenticated user for now, or restrict to isAdmin()
+    }
+
+    // Settings collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAuthenticated(); // Allow any authenticated user for now
+    }
+  }
+}

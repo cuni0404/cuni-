@@ -1,5 +1,5 @@
 export interface Project {
-  id: number;
+  id: string;
   title: string;
   role: string;
   client: string;
@@ -10,7 +10,7 @@ export interface Project {
   description: string;
   isFeatured: number;
   category: string;
-  order_index?: number;
+  order: number;
   images?: { id: string; imageUrl: string }[];
   createdAt?: any;
   updatedAt?: any;
@@ -34,9 +34,8 @@ export interface SiteSettings {
   contactX: string;
   contactYoutube: string;
   clients: string;
-  favicon: string;
 }
 
-export type ProjectInput = Omit<Project, 'id' | 'images'> & {
+export type ProjectInput = Omit<Project, 'id' | 'images' | 'order'> & {
   images: string[];
 };

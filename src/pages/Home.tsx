@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Layout } from 'lucide-react';
 import { Project, SiteSettings } from '../types';
 import { cn } from '../lib/utils';
+import { db } from '../firebase';
+import { collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -13,9 +15,18 @@ export default function Home() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const response = await fetch('/api/projects');
-        const data = await response.json();
-        setProjects(data.filter((p: Project) => p.isFeatured === 1).slice(0, 6));
+        const q = query(
+          collection(db, 'projects'), 
+          where('isFeatured', '==', 1),
+          orderBy('order', 'asc'),
+          limit(6)
+        );
+        const querySnapshot = await getDocs(q);
+        const projectsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as unknown as Project[];
+        setProjects(projectsData);
       } catch (err) {
         console.error('Error fetching projects:', err);
       }
@@ -23,9 +34,11 @@ export default function Home() {
 
     const fetchSettings = async () => {
       try {
-        const response = await fetch('/api/settings');
-        const data = await response.json();
-        setSettings(data);
+        const docRef = doc(db, 'settings', 'main');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setSettings(docSnap.data());
+        }
       } catch (err) {
         console.error('Error fetching settings:', err);
       }
@@ -91,6 +104,28 @@ export default function Home() {
             >
               {settings.heroSubtitle || "Motion Designer / Webtoon PV / Action / Typography"}
             </motion.div>
+
+            {/* Home Client List */}
+            {settings.clients && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.4 }}
+                transition={{ delay: 1, duration: 1 }}
+                className="mt-12 max-w-2xl mx-auto overflow-hidden mask-fade"
+              >
+                <div className="flex whitespace-nowrap animate-marquee w-max py-4">
+                  {(settings.clients.split(',').map(c => c.trim())).concat(settings.clients.split(',').map(c => c.trim())).map((client, idx) => (
+                    <div key={idx} className="inline-flex items-center justify-center mx-6">
+                      {client.startsWith('http') || client.startsWith('/uploads') ? (
+                        <img src={client} alt="" className="h-4 md:h-6 object-contain grayscale brightness-200" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span className="text-[10px] md:text-xs font-bold tracking-tighter uppercase whitespace-nowrap">{client}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
           </div>
 
           <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 animate-bounce opacity-40">
@@ -99,9 +134,24 @@ export default function Home() {
         </div>
       </section>
 
+      <style>{`
+        @keyframes marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+          display: flex;
+          animation: marquee 60s linear infinite;
+        }
+        .mask-fade {
+          mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
+          -webkit-mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
+        }
+      `}</style>
+
       {/* Latest Works Slider */}
-      <section className="py-24 md:py-32">
-        <div className="px-8 md:px-20 flex justify-between items-end mb-12">
+      <section className="py-24 md:py-40">
+        <div className="px-6 md:px-24 flex justify-between items-end mb-16">
           <div>
             <h3 className="text-4xl md:text-6xl font-display font-black tracking-tighter uppercase text-white">
               LATEST <span className="text-brand">WORKS</span>
@@ -125,7 +175,7 @@ export default function Home() {
 
         <div 
           ref={scrollRef}
-          className="flex gap-[10px] overflow-x-auto no-scrollbar px-8 md:px-20 snap-x snap-mandatory"
+          className="flex gap-[10px] overflow-x-auto no-scrollbar px-6 md:px-24 snap-x snap-mandatory"
         >
           {projects.map((project, index) => (
             <motion.div
@@ -135,20 +185,20 @@ export default function Home() {
               viewport={{ once: true }}
               className="min-w-[300px] md:min-w-[450px] snap-start group"
             >
-              <Link to={`/work/${project.id}`} className="block aspect-video overflow-hidden bg-white/5 relative">
+              <Link to={`/work/${project.id}`} className="block aspect-video overflow-hidden bg-white/5 relative rounded-2xl border border-white/5">
                 {project.thumbnailUrl ? (
                   <img 
                     src={`${project.thumbnailUrl}?v=${project.id}`} 
                     alt={project.title}
-                    className="w-full h-full object-cover transition-transform duration-[400ms] ease-in-out group-hover:scale-105"
+                    className="w-full h-full object-cover transition-transform duration-[400ms] ease-in-out group-hover:scale-105 rounded-2xl"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
+                  <div className="w-full h-full flex items-center justify-center rounded-2xl">
                     <Layout size={48} className="opacity-10" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-[400ms] ease-in-out flex flex-col items-center justify-center p-6 text-center">
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-[400ms] ease-in-out flex flex-col items-center justify-center p-6 text-center rounded-2xl">
                   <h4 className="text-xl font-bold tracking-tighter uppercase mb-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-[400ms] ease-out">
                     {project.title}
                   </h4>
@@ -166,7 +216,7 @@ export default function Home() {
           ))}
           {/* View All Card */}
           <div className="min-w-[300px] md:min-w-[450px] snap-start">
-            <Link to="/work" className="flex flex-col items-center justify-center aspect-video border border-white/10 hover:bg-white/5 transition-colors group">
+            <Link to="/work" className="flex flex-col items-center justify-center aspect-video border border-white/10 hover:bg-white/5 transition-colors group rounded-2xl">
               <span className="text-[10px] tracking-[0.4em] uppercase opacity-40 group-hover:opacity-100 mb-4">View All Projects</span>
               <ArrowRight size={24} className="opacity-20 group-hover:opacity-100 group-hover:translate-x-2 transition-all" />
             </Link>
