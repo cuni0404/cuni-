@@ -84,11 +84,30 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
   app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+  // Migration to ensure all columns exist in settings table
+  const settingsColumns = [
+    'logoText', 'logoImage', 'heroTitle', 'heroSubtitle', 'heroImage', 'heroVideo',
+    'aboutTitle', 'aboutDescription', 'aboutProfileImage', 'aboutDescFontSize',
+    'aboutDescFontWeight', 'aboutBackgroundImage', 'contactEmail', 'contactInstagram',
+    'contactX', 'contactYoutube', 'clients', 'favicon'
+  ];
+  
+  for (const column of settingsColumns) {
+    try {
+      db.prepare(`ALTER TABLE settings ADD COLUMN ${column} TEXT`).run();
+    } catch (e) {
+      // Column probably already exists
+    }
+  }
+
   // API Routes
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
   app.get("/api/projects", (req, res) => {
     const projects = db.prepare("SELECT * FROM projects ORDER BY order_index ASC, id DESC").all();
     res.json(projects);
@@ -167,24 +186,37 @@ async function startServer() {
   });
 
   app.get("/api/settings", (req, res) => {
-    const settings = db.prepare("SELECT * FROM settings WHERE id = 1").get();
-    res.json(settings);
+    try {
+      const settings = db.prepare("SELECT * FROM settings WHERE id = 1").get();
+      res.json(settings || {});
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   app.post("/api/settings", (req, res) => {
     try {
+      console.log('Updating settings with body:', req.body);
       const fields = Object.keys(req.body).filter(k => k !== 'id');
       if (fields.length === 0) return res.json({ success: true });
       
-      const values = fields.map(k => req.body[k]);
-      const setClause = fields.map(k => `${k} = ?`).join(", ");
+      // Get table info to only update existing columns
+      const tableInfo = db.prepare("PRAGMA table_info(settings)").all() as any[];
+      const validColumns = tableInfo.map(col => col.name);
+      
+      const validFields = fields.filter(f => validColumns.includes(f));
+      if (validFields.length === 0) return res.json({ success: true });
+
+      const values = validFields.map(k => req.body[k]);
+      const setClause = validFields.map(k => `${k} = ?`).join(", ");
       
       db.prepare(`UPDATE settings SET ${setClause} WHERE id = 1`).run(...values);
-      console.log('Settings updated');
+      console.log('Settings updated successfully');
       res.json({ success: true });
     } catch (error) {
       console.error('Error updating settings:', error);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Internal server error: " + (error as Error).message });
     }
   });
 
