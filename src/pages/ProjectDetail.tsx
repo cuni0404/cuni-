@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ChevronLeft } from 'lucide-react';
 import { Project } from '../types';
+import { db } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -11,38 +13,33 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (!id) return;
-    const loadData = () => {
-      const savedProjects = localStorage.getItem('cuni_projects');
-      if (savedProjects) {
-        const data = JSON.parse(savedProjects);
-        const found = data.find((p: Project) => p.id.toString() === id.toString());
-        if (found) {
-          setProject(found);
-          setLoading(false);
-          return;
-        }
-      }
-      fetchProject();
-    };
-
-    const fetchProject = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(`/api/projects/${id}`);
-        if (response.ok) {
-          const data = await response.json();
-          setProject(data);
+    
+    const unsubscribe = onSnapshot(doc(db, 'projects', id), (snapshot) => {
+      if (snapshot.exists()) {
+        setProject({ id: snapshot.id, ...snapshot.data() } as Project);
+        setLoading(false);
+      } else {
+        // Fallback to localStorage
+        const savedProjects = localStorage.getItem('cuni_projects');
+        if (savedProjects) {
+          const data = JSON.parse(savedProjects);
+          const found = data.find((p: Project) => p.id.toString() === id.toString());
+          if (found) {
+            setProject(found);
+          } else {
+            setProject(null);
+          }
         } else {
           setProject(null);
         }
-      } catch (err) {
-        console.error('Error fetching project:', err);
-        setProject(null);
-      } finally {
         setLoading(false);
       }
-    };
-    loadData();
+    }, (error) => {
+      console.error("Error fetching project:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [id]);
 
   const getEmbedUrl = (url: string) => {

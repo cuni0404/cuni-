@@ -11,13 +11,80 @@ import {
   Upload, 
   CheckCircle2,
   LogOut,
-  GripVertical
+  GripVertical,
+  Database,
+  AlertCircle
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Project, ProjectInput, SiteSettings } from '../types';
+import { db, auth } from '../firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  writeBatch,
+  getDocs
+} from 'firebase/firestore';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export default function Admin() {
   const [user, setUser] = useState<any>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [settings, setSettings] = useState<SiteSettings>({
     logoText: '',
@@ -68,68 +135,104 @@ export default function Admin() {
 
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check if "logged in" via local storage for simple persistence
-    const savedUser = localStorage.getItem('admin_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-      loadData();
-    }
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setIsAuthReady(true);
+    });
+
+    return () => unsubscribeAuth();
   }, []);
 
-  const loadData = () => {
-    // Load projects from localStorage
-    const savedProjects = localStorage.getItem('cuni_projects');
-    if (savedProjects) {
-      setProjects(JSON.parse(savedProjects));
-    } else {
-      // Fallback to API if localStorage is empty (initial migration)
-      fetchProjects();
-    }
+  useEffect(() => {
+    if (!user) return;
 
-    // Load settings from localStorage
-    const savedSettings = localStorage.getItem('cuni_settings');
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    } else {
-      // Fallback to API if localStorage is empty (initial migration)
-      fetchSettings();
-    }
-  };
+    const q = query(collection(db, 'projects'), orderBy('order_index', 'asc'));
+    const unsubscribeProjects = onSnapshot(q, (snapshot) => {
+      const projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      setProjects(projectsData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'projects');
+    });
 
-  const handlePasswordLogin = (e: FormEvent) => {
-    e.preventDefault();
-    // Simple password check - in a real app this would be server-side
-    // For now using a default password or one from env if available
-    const ADMIN_PASS = "0404"; // Default password
-    
-    if (password === ADMIN_PASS) {
-      const mockUser = { email: 'admin@portfolio.com', isAnonymous: false };
-      setUser(mockUser);
-      localStorage.setItem('admin_user', JSON.stringify(mockUser));
-      setLoginError(false);
-      fetchProjects();
-      fetchSettings();
-    } else {
-      setLoginError(true);
+    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as SiteSettings;
+        const sanitizedData = { ...data };
+        Object.keys(sanitizedData).forEach(key => {
+          if (sanitizedData[key as keyof SiteSettings] === null) (sanitizedData as any)[key] = '';
+        });
+        setSettings(prev => ({ ...prev, ...sanitizedData }));
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'settings/global');
+    });
+
+    return () => {
+      unsubscribeProjects();
+      unsubscribeSettings();
+    };
+  }, [user]);
+
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error('Login failed', err);
+      alert('Login failed. Please try again.');
     }
   };
 
   const handleLogout = async () => {
-    setUser(null);
-    localStorage.removeItem('admin_user');
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Logout failed', err);
+    }
   };
 
-  const fetchProjects = async () => {
+  const migrateDataToFirebase = async () => {
+    if (!user) return;
+    setIsMigrating(true);
+    setMigrationStatus('Starting migration...');
+
     try {
-      const response = await fetch('/api/projects');
-      if (response.ok) {
-        const projectsData = await response.json();
-        setProjects(projectsData);
+      const batch = writeBatch(db);
+      
+      // Migrate Settings
+      const savedSettings = localStorage.getItem('cuni_settings');
+      if (savedSettings) {
+        const settingsData = JSON.parse(savedSettings);
+        batch.set(doc(db, 'settings', 'global'), settingsData);
+        setMigrationStatus('Settings added to batch...');
       }
+
+      // Migrate Projects
+      const savedProjects = localStorage.getItem('cuni_projects');
+      if (savedProjects) {
+        const projectsData = JSON.parse(savedProjects);
+        for (const project of projectsData) {
+          const { id, ...data } = project;
+          const projectRef = doc(db, 'projects', id.toString());
+          batch.set(projectRef, data);
+        }
+        setMigrationStatus(`Added ${projectsData.length} projects to batch...`);
+      }
+
+      await batch.commit();
+      setMigrationStatus('Migration successful! Data is now in the cloud.');
+      setTimeout(() => {
+        setIsMigrating(false);
+        setMigrationStatus(null);
+      }, 3000);
     } catch (err) {
-      console.error('Error fetching projects:', err);
+      console.error('Migration failed', err);
+      setMigrationStatus('Migration failed. Check console for details.');
+      setTimeout(() => setIsMigrating(false), 5000);
     }
   };
 
@@ -146,30 +249,27 @@ export default function Admin() {
     })) as Project[];
     
     setProjects(updatedItems);
-    localStorage.setItem('cuni_projects', JSON.stringify(updatedItems));
-  };
-
-  const fetchSettings = async () => {
+    
+    // Update Firestore
     try {
-      const response = await fetch('/api/settings');
-      if (response.ok) {
-        const data = await response.json();
-        const sanitizedData = { ...data };
-        Object.keys(sanitizedData).forEach(key => {
-          if (sanitizedData[key] === null) sanitizedData[key] = '';
-        });
-        setSettings(prev => ({ ...prev, ...sanitizedData }));
-      }
+      const batch = writeBatch(db);
+      updatedItems.forEach((item) => {
+        const { id, ...data } = item;
+        batch.set(doc(db, 'projects', id.toString()), data);
+      });
+      await batch.commit();
     } catch (err) {
-      console.error('Error fetching settings:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'projects');
     }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure?')) {
-      const updatedProjects = projects.filter(p => p.id !== id);
-      setProjects(updatedProjects);
-      localStorage.setItem('cuni_projects', JSON.stringify(updatedProjects));
+      try {
+        await deleteDoc(doc(db, 'projects', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `projects/${id}`);
+      }
     }
   };
 
@@ -190,23 +290,13 @@ export default function Admin() {
     setSaveStatus('saving');
     
     try {
-      let updatedProjects: Project[];
-      
-      if (editingId) {
-        updatedProjects = projects.map(p => 
-          p.id === editingId ? { ...p, ...currentProject } as Project : p
-        );
-      } else {
-        const newProject = {
-          ...currentProject,
-          id: Date.now().toString(),
-          order_index: projects.length
-        } as Project;
-        updatedProjects = [...projects, newProject];
-      }
+      const id = editingId || Date.now().toString();
+      const projectData = {
+        ...currentProject,
+        order_index: editingId ? (projects.find(p => p.id === editingId)?.order_index ?? projects.length) : projects.length
+      };
 
-      setProjects(updatedProjects);
-      localStorage.setItem('cuni_projects', JSON.stringify(updatedProjects));
+      await setDoc(doc(db, 'projects', id), projectData);
       
       setSaveStatus('success');
       
@@ -229,7 +319,7 @@ export default function Admin() {
         });
       }, 1500);
     } catch (err) {
-      console.error('Error saving project:', err);
+      handleFirestoreError(err, OperationType.WRITE, `projects/${editingId || 'new'}`);
       setSaveStatus('idle');
     }
   };
@@ -311,12 +401,11 @@ export default function Admin() {
     e.preventDefault();
     setSaveStatus('saving');
     try {
-      localStorage.setItem('cuni_settings', JSON.stringify(settings));
+      await setDoc(doc(db, 'settings', 'global'), settings);
       setSaveStatus('success');
-      window.dispatchEvent(new CustomEvent('settingsUpdated'));
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
-      console.error('Error saving settings:', err);
+      handleFirestoreError(err, OperationType.WRITE, 'settings/global');
       setSaveStatus('idle');
     }
   };
@@ -342,7 +431,7 @@ export default function Admin() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
         <h1 className="text-4xl font-bold tracking-tighter uppercase">Dashboard</h1>
         <div className="flex items-center gap-4">
-          {user && !user.isAnonymous ? (
+          {user ? (
             <div className="flex items-center gap-4">
               <div className="text-right hidden md:block">
                 <p className="text-[10px] uppercase tracking-widest opacity-40">Logged in as</p>
@@ -357,21 +446,12 @@ export default function Admin() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handlePasswordLogin} className="flex items-center gap-2">
-              <input 
-                type="password" 
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={`bg-white/5 border ${loginError ? 'border-red-500' : 'border-white/10'} px-4 py-2 rounded text-xs focus:outline-none focus:border-brand w-32 md:w-48 transition-all`}
-              />
-              <button 
-                type="submit"
-                className="bg-white text-black px-4 py-2 rounded font-bold text-xs uppercase tracking-widest hover:bg-brand transition-colors"
-              >
-                Login
-              </button>
-            </form>
+            <button 
+              onClick={handleGoogleLogin}
+              className="bg-white text-black px-6 py-2 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-brand transition-colors flex items-center gap-2"
+            >
+              <Database size={16} /> Login with Google
+            </button>
           )}
           <div className="flex bg-white/5 p-1 rounded-lg">
             <button 
@@ -389,6 +469,38 @@ export default function Admin() {
           </div>
         </div>
       </div>
+
+      {user && (
+        <div className="mb-12 p-6 rounded-2xl bg-brand/5 border border-brand/20 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-brand/10 rounded-full text-brand">
+              <Database size={24} />
+            </div>
+            <div>
+              <h3 className="font-bold uppercase tracking-tight">Cloud Database Active</h3>
+              <p className="text-xs opacity-60">Your data is now being synced to the cloud and will be visible on all devices.</p>
+            </div>
+          </div>
+          <button 
+            onClick={migrateDataToFirebase}
+            disabled={isMigrating}
+            className="flex items-center gap-2 bg-white text-black px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-brand transition-all disabled:opacity-50"
+          >
+            {isMigrating ? 'Migrating...' : 'Migrate Local Data to Cloud'}
+          </button>
+        </div>
+      )}
+
+      {migrationStatus && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 p-4 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3 text-xs font-medium"
+        >
+          <AlertCircle size={16} className="text-brand" />
+          {migrationStatus}
+        </motion.div>
+      )}
 
       {activeTab === 'projects' ? (
         <div className="space-y-8">

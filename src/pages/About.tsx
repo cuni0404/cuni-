@@ -1,32 +1,27 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { SiteSettings } from '../types';
+import { db } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 export default function About() {
   const [settings, setSettings] = useState<Partial<SiteSettings>>({});
 
   useEffect(() => {
-    const loadData = () => {
-      const savedSettings = localStorage.getItem('cuni_settings');
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
+      if (snapshot.exists()) {
+        setSettings(snapshot.data() as SiteSettings);
       } else {
-        fetchSettings();
-      }
-    };
-
-    const fetchSettings = async () => {
-      try {
-        const response = await fetch('/api/settings');
-        if (response.ok) {
-          const data = await response.json();
-          setSettings(data);
+        const savedSettings = localStorage.getItem('cuni_settings');
+        if (savedSettings) {
+          setSettings(JSON.parse(savedSettings));
         }
-      } catch (err) {
-        console.error('Error fetching settings:', err);
       }
-    };
-    loadData();
+    }, (error) => {
+      console.error("Error fetching settings:", error);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const tools = [

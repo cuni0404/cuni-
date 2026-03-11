@@ -6,7 +6,11 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X, Mail, ArrowRight, Plus, Trash2, Edit2, ChevronLeft, Youtube, Twitter, Instagram } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect, ErrorInfo, ReactNode } from 'react';
+import { db, auth } from './firebase';
+import { doc, onSnapshot, getDocFromServer } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import Home from './pages/Home';
 import Work from './pages/Work';
 import About from './pages/About';
@@ -104,31 +108,108 @@ function ScrollToTop() {
   return null;
 }
 
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: any;
+}
+
+class ErrorBoundary extends (React.Component as any) {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let errorMessage = "Something went wrong.";
+      try {
+        const errorObj = this.state.error as any;
+        if (errorObj && errorObj.message) {
+          const parsed = JSON.parse(errorObj.message);
+          if (parsed.error) errorMessage = `Firestore Error: ${parsed.error}`;
+        }
+      } catch (e) {
+        errorMessage = (this.state.error as any)?.message || errorMessage;
+      }
+
+      return (
+        <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6 text-center">
+          <h2 className="text-2xl font-bold mb-4 uppercase tracking-tighter text-brand">Application Error</h2>
+          <p className="opacity-60 max-w-md mb-8">{errorMessage}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="bg-white text-black px-8 py-3 rounded-full font-bold uppercase tracking-widest hover:bg-brand transition-colors"
+          >
+            Reload Application
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 function AppContent() {
   const [settings, setSettings] = useState<any>({});
+  const [user, setUser] = useState<any>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const loadData = () => {
-      const savedSettings = localStorage.getItem('cuni_settings');
-      if (savedSettings) {
-        const data = JSON.parse(savedSettings);
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setIsAuthReady(true);
+    });
+
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
+    };
+    testConnection();
+
+    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
         setSettings(data);
         updateMetadata(data);
       } else {
-        fetchSettings();
+        // Fallback to localStorage if Firestore is empty
+        const savedSettings = localStorage.getItem('cuni_settings');
+        if (savedSettings) {
+          const data = JSON.parse(savedSettings);
+          setSettings(data);
+          updateMetadata(data);
+        }
       }
-    };
+    }, (error) => {
+      console.error("Error fetching settings:", error);
+    });
 
     const updateMetadata = (data: any) => {
-      // Update document title
       if (data.logoText) {
         document.title = `${data.logoText} Works`;
       } else {
         document.title = 'Cuni Works';
       }
 
-      // Update favicon if logoImage exists
       if (data.logoImage) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -139,7 +220,7 @@ function AppContent() {
           canvas.height = 32;
           const ctx = canvas.getContext('2d');
           if (ctx) {
-            const radius = 8; // ~25% of 32
+            const radius = 8;
             ctx.beginPath();
             ctx.moveTo(radius, 0);
             ctx.lineTo(32 - radius, 0);
@@ -166,22 +247,10 @@ function AppContent() {
       }
     };
 
-    const fetchSettings = async () => {
-      try {
-        const response = await fetch('/api/settings');
-        if (response.ok) {
-          const data = await response.json();
-          setSettings(data);
-          updateMetadata(data);
-        }
-      } catch (err) {
-        console.error('Error fetching settings:', err);
-      }
+    return () => {
+      unsubscribeAuth();
+      unsubscribeSettings();
     };
-    loadData();
-    // Listen for settings updates from admin
-    window.addEventListener('settingsUpdated', loadData);
-    return () => window.removeEventListener('settingsUpdated', loadData);
   }, []);
 
   // Admin access gimmick: Type 'admin' to redirect
@@ -276,9 +345,11 @@ function AppContent() {
 
 export default function App() {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <ErrorBoundary>
+      <Router>
+        <AppContent />
+      </Router>
+    </ErrorBoundary>
   );
 }
 

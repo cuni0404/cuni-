@@ -3,33 +3,27 @@ import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { Layout } from 'lucide-react';
 import { Project } from '../types';
+import { db } from '../firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 export default function Work() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [filter, setFilter] = useState('ALL');
 
   useEffect(() => {
-    const loadData = () => {
+    const q = query(collection(db, 'projects'), orderBy('order_index', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      setProjects(data);
+    }, (error) => {
+      console.error("Error fetching projects:", error);
       const savedProjects = localStorage.getItem('cuni_projects');
       if (savedProjects) {
         setProjects(JSON.parse(savedProjects));
-      } else {
-        fetchProjects();
       }
-    };
+    });
 
-    const fetchProjects = async () => {
-      try {
-        const response = await fetch('/api/projects');
-        if (response.ok) {
-          const data = await response.json();
-          setProjects(data);
-        }
-      } catch (err) {
-        console.error('Error fetching projects:', err);
-      }
-    };
-    loadData();
+    return () => unsubscribe();
   }, []);
 
   const categories = ['ALL', ...Array.from(new Set(projects.map(p => p.category)))];

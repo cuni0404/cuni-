@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A portfolio project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "role": { "type": "string" },
+        "client": { "type": "string" },
+        "year": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "videoFile": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "isFeatured": { "type": "integer" },
+        "category": { "type": "string" },
+        "order_index": { "type": "integer" },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "imageUrl": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["title", "category"]
+    },
+    "SiteSettings": {
+      "title": "Site Settings",
+      "description": "Global site configuration",
+      "type": "object",
+      "properties": {
+        "logoText": { "type": "string" },
+        "logoImage": { "type": "string" },
+        "heroTitle": { "type": "string" },
+        "heroSubtitle": { "type": "string" },
+        "heroImage": { "type": "string" },
+        "heroVideo": { "type": "string" },
+        "aboutTitle": { "type": "string" },
+        "aboutDescription": { "type": "string" },
+        "aboutProfileImage": { "type": "string" },
+        "aboutDescFontSize": { "type": "string" },
+        "aboutDescFontWeight": { "type": "string" },
+        "aboutBackgroundImage": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "contactInstagram": { "type": "string" },
+        "contactX": { "type": "string" },
+        "contactYoutube": { "type": "string" },
+        "clients": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "projects": {
+      "schema": "Project",
+      "description": "Collection of portfolio projects"
+    },
+    "settings/global": {
+      "schema": "SiteSettings",
+      "description": "Global site settings document"
+    }
+  }
+}

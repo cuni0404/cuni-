@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Layout } from 'lucide-react';
 import { Project, SiteSettings } from '../types';
 import { cn } from '../lib/utils';
+import { db } from '../firebase';
+import { collection, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -11,69 +13,52 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const loadData = () => {
-      // Load projects from localStorage
+    // Fetch Featured Projects from Firestore
+    const q = query(
+      collection(db, 'projects'), 
+      where('isFeatured', '==', 1),
+      orderBy('order_index', 'asc'),
+      limit(6)
+    );
+
+    const unsubscribeProjects = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      setProjects(data);
+      
+      setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollLeft = 0;
+        }
+      }, 100);
+    }, (error) => {
+      console.error("Error fetching featured projects:", error);
+      // Fallback to localStorage
       const savedProjects = localStorage.getItem('cuni_projects');
       if (savedProjects) {
-        const data = JSON.parse(savedProjects);
-        const featured = data.filter((p: Project) => p.isFeatured === 1).slice(0, 6);
+        const localData = JSON.parse(savedProjects);
+        const featured = localData.filter((p: Project) => p.isFeatured === 1).slice(0, 6);
         setProjects(featured);
-        
-        setTimeout(() => {
-          if (scrollRef.current) {
-            scrollRef.current.scrollLeft = 0;
-          }
-        }, 100);
+      }
+    });
+
+    // Fetch Settings from Firestore
+    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
+      if (snapshot.exists()) {
+        setSettings(snapshot.data() as SiteSettings);
       } else {
-        fetchProjects();
-      }
-
-      // Load settings from localStorage
-      const savedSettings = localStorage.getItem('cuni_settings');
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
-      } else {
-        fetchSettings();
-      }
-    };
-
-    const fetchProjects = async () => {
-      try {
-        const response = await fetch('/api/projects');
-        if (response.ok) {
-          const data = await response.json();
-          const featured = data.filter((p: Project) => p.isFeatured === 1).slice(0, 6);
-          setProjects(featured);
-          
-          setTimeout(() => {
-            if (scrollRef.current) {
-              scrollRef.current.scrollLeft = 0;
-            }
-          }, 100);
+        const savedSettings = localStorage.getItem('cuni_settings');
+        if (savedSettings) {
+          setSettings(JSON.parse(savedSettings));
         }
-      } catch (err) {
-        console.error('Error fetching projects:', err);
       }
+    }, (error) => {
+      console.error("Error fetching settings:", error);
+    });
+
+    return () => {
+      unsubscribeProjects();
+      unsubscribeSettings();
     };
-
-    const fetchSettings = async () => {
-      try {
-        const response = await fetch('/api/settings');
-        if (response.ok) {
-          const data = await response.json();
-          setSettings(data);
-        }
-      } catch (err) {
-        console.error('Error fetching settings:', err);
-      }
-    };
-
-    loadData();
-
-    // Listen for settings updates from admin panel
-    const handleUpdate = () => loadData();
-    window.addEventListener('settingsUpdated', handleUpdate);
-    return () => window.removeEventListener('settingsUpdated', handleUpdate);
   }, []);
 
   const scroll = (direction: 'left' | 'right') => {

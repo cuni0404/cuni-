@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: projects
+    // Document ID: auto-generated
+    // Fields:
+    //   - title: string (required, 1-200 chars)
+    //   - role: string (optional, 0-200 chars)
+    //   - client: string (optional, 0-200 chars)
+    //   - year: string (optional, 0-50 chars)
+    //   - videoUrl: string (optional, URL)
+    //   - videoFile: string (optional, URL)
+    //   - thumbnailUrl: string (optional, URL)
+    //   - description: string (optional, 0-10000 chars)
+    //   - isFeatured: number (0 or 1)
+    //   - category: string (required, 1-100 chars)
+    //   - order_index: number (required)
+    //   - images: list (optional, max 50 items)
+    //
+    // Collection: settings
+    // Document ID: global
+    // Fields:
+    //   - logoText: string (optional)
+    //   - logoImage: string (optional, URL)
+    //   - heroTitle: string (optional)
+    //   - heroSubtitle: string (optional)
+    //   - heroImage: string (optional, URL)
+    //   - heroVideo: string (optional, URL)
+    //   - aboutTitle: string (optional)
+    //   - aboutDescription: string (optional)
+    //   - aboutProfileImage: string (optional, URL)
+    //   - contactEmail: string (optional, email)
+    //   - ... other settings fields
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      let email = request.auth.token.email.lower();
+      let isBootstrapAdmin = (email == "nik75687@gmail.com" || email == "cuni0404@gmail.com") && request.auth.token.email_verified == true;
+      let isDbAdmin = exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return isAuthenticated() && (isBootstrapAdmin || isDbAdmin);
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https?://.*") || url == "");
+    }
+
+    function isValidEmail(email) {
+      return email is string && (email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") || email == "");
+    }
+
+    function isValidProject(data) {
+      return data.title is string && data.title.size() > 0 &&
+             data.category is string && data.category.size() > 0 &&
+             data.order_index is number;
+    }
+
+    function isValidSettings(data) {
+      return true; // Simplified for debugging
+    }
+
+    // Projects Rules
+    match /projects/{projectId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidProject(request.resource.data);
+      allow update: if isAdmin() && isValidProject(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Settings Rules
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidSettings(request.resource.data);
+      allow update: if isAdmin() && isValidSettings(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Users Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId && request.resource.data.role == 'user';
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && request.resource.data.role == resource.data.role);
+    }
+  }
+}
