@@ -1,3 +1,8 @@
+export interface ProjectImage {
+  id: string;
+  imageUrl: string;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -11,7 +16,7 @@ export interface Project {
   isFeatured: number;
   category: string;
   order_index: number;
-  images?: { id: string; imageUrl: string }[];
+  images?: ProjectImage[];
   createdAt?: any;
   updatedAt?: any;
 }
@@ -36,6 +41,4 @@ export interface SiteSettings {
   clients: string;
 }
 
-export type ProjectInput = Omit<Project, 'id' | 'images' | 'order'> & {
-  images: string[];
-};
+export type ProjectInput = Omit<Project, 'id' | 'order_index'>;

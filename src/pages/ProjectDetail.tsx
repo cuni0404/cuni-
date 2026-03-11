@@ -78,9 +78,9 @@ export default function ProjectDetail() {
         <ChevronLeft size={14} /> Back to Work
       </Link>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-24">
-        <div className="lg:col-span-2">
-          <h1 className="text-4xl md:text-6xl font-bold tracking-tighter mb-8 uppercase">{project.title}</h1>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-12 mb-24">
+        <div className="lg:col-span-3">
+          <h1 className="text-3xl md:text-5xl font-bold tracking-tighter mb-8 uppercase">{project.title}</h1>
           <div className="aspect-video bg-white/5 mb-12 rounded-xl overflow-hidden border border-white/10 shadow-2xl">
             {project.videoFile ? (
               <video 
@@ -107,7 +107,7 @@ export default function ProjectDetail() {
             )}
           </div>
           <div className="prose prose-invert max-w-none">
-            <p className="text-lg opacity-70 leading-relaxed">{project.description}</p>
+            <p className="text-lg opacity-70 leading-relaxed whitespace-pre-wrap">{project.description}</p>
           </div>
         </div>
 
@@ -134,13 +134,13 @@ export default function ProjectDetail() {
       {project.images && project.images.length > 0 && (
         <div className="space-y-12">
           <h2 className="text-[11px] uppercase tracking-[0.4em] opacity-40 text-center">Stills</h2>
-          <div className="grid grid-cols-1 gap-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {project.images.map((img) => (
               <img 
                 key={img.id} 
                 src={img.imageUrl} 
                 alt="Project Still" 
-                className="w-full h-auto grayscale hover:grayscale-0 transition-all duration-700"
+                className="w-full h-auto grayscale hover:grayscale-0 transition-all duration-700 rounded-lg border border-white/5"
                 referrerPolicy="no-referrer"
               />
             ))}

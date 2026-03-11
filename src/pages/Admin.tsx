@@ -51,7 +51,8 @@ export default function Admin() {
     thumbnailUrl: '',
     description: '',
     isFeatured: 0,
-    category: 'Webtoon PV'
+    category: 'Webtoon PV',
+    images: []
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
@@ -223,7 +224,8 @@ export default function Admin() {
           thumbnailUrl: '',
           description: '',
           isFeatured: 0,
-          category: 'Webtoon PV'
+          category: 'Webtoon PV',
+          images: []
         });
       }, 1500);
     } catch (err) {
@@ -286,6 +288,12 @@ export default function Admin() {
           setSettings(prev => ({ ...prev, aboutProfileImage: downloadURL }));
         } else if (target === 'aboutBackgroundImage') {
           setSettings(prev => ({ ...prev, aboutBackgroundImage: downloadURL }));
+        } else if (target === 'projectImages') {
+          const currentImages = currentProject.images || [];
+          setCurrentProject(prev => ({ 
+            ...prev, 
+            images: [...currentImages, { id: Date.now().toString(), imageUrl: downloadURL }] 
+          }));
         } else if (target === 'clients') {
           const currentClients = settings.clients ? settings.clients.split(',').map(c => c.trim()) : [];
           setSettings(prev => ({ ...prev, clients: [...currentClients, downloadURL].join(', ') }));
@@ -400,7 +408,8 @@ export default function Admin() {
                   thumbnailUrl: '',
                   description: '',
                   isFeatured: 0,
-                  category: 'Webtoon PV'
+                  category: 'Webtoon PV',
+                  images: []
                 });
               }}
               className="flex items-center gap-2 bg-brand text-black px-4 py-2 rounded font-bold text-sm"
@@ -803,11 +812,40 @@ export default function Admin() {
               <div className="space-y-1">
                 <label className="text-[9px] uppercase tracking-widest opacity-40 font-bold">Description</label>
                 <textarea
-                  rows={3}
+                  rows={6}
                   value={currentProject.description}
                   onChange={e => setCurrentProject({...currentProject, description: e.target.value})}
                   className="w-full bg-white/5 border border-white/10 p-2.5 rounded focus:outline-none focus:border-brand text-sm"
                 />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <label className="text-[9px] uppercase tracking-widest opacity-40 font-bold">Additional Screenshots (Stills)</label>
+                  <label className="cursor-pointer bg-white/10 hover:bg-white/20 px-4 py-2 rounded flex items-center gap-2 transition-colors text-[10px] font-bold">
+                    <Upload size={14} /> ADD IMAGE
+                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'projectImages')} />
+                  </label>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {currentProject.images?.map((img, idx) => (
+                    <div key={img.id} className="relative group aspect-video rounded-lg overflow-hidden border border-white/10">
+                      <img src={img.imageUrl} alt="" className="w-full h-full object-cover" />
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const updated = [...(currentProject.images || [])];
+                          updated.splice(idx, 1);
+                          setCurrentProject({...currentProject, images: updated});
+                        }}
+                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="flex items-center gap-3">
