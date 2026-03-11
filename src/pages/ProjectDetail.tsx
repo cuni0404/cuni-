@@ -11,6 +11,20 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (!id) return;
+    const loadData = () => {
+      const savedProjects = localStorage.getItem('cuni_projects');
+      if (savedProjects) {
+        const data = JSON.parse(savedProjects);
+        const found = data.find((p: Project) => p.id.toString() === id.toString());
+        if (found) {
+          setProject(found);
+          setLoading(false);
+          return;
+        }
+      }
+      fetchProject();
+    };
+
     const fetchProject = async () => {
       setLoading(true);
       try {
@@ -28,7 +42,7 @@ export default function ProjectDetail() {
         setLoading(false);
       }
     };
-    fetchProject();
+    loadData();
   }, [id]);
 
   const getEmbedUrl = (url: string) => {

@@ -99,39 +99,53 @@ function AppContent() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const loadData = () => {
+      const savedSettings = localStorage.getItem('cuni_settings');
+      if (savedSettings) {
+        const data = JSON.parse(savedSettings);
+        setSettings(data);
+        updateMetadata(data);
+      } else {
+        fetchSettings();
+      }
+    };
+
+    const updateMetadata = (data: any) => {
+      // Update document title
+      if (data.logoText) {
+        document.title = `${data.logoText} Works`;
+      } else {
+        document.title = 'Cuni Works';
+      }
+
+      // Update favicon if logoImage exists
+      if (data.logoImage) {
+        let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.getElementsByTagName('head')[0].appendChild(link);
+        }
+        link.href = data.logoImage;
+      }
+    };
+
     const fetchSettings = async () => {
       try {
         const response = await fetch('/api/settings');
         if (response.ok) {
           const data = await response.json();
           setSettings(data);
-          
-          // Update document title
-          if (data.logoText) {
-            document.title = `${data.logoText} works`;
-          } else {
-            document.title = 'cuni works';
-          }
-
-          // Update favicon if logoImage exists
-          if (data.logoImage) {
-            let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
-            if (!link) {
-              link = document.createElement('link');
-              link.rel = 'icon';
-              document.getElementsByTagName('head')[0].appendChild(link);
-            }
-            link.href = data.logoImage;
-          }
+          updateMetadata(data);
         }
       } catch (err) {
         console.error('Error fetching settings:', err);
       }
     };
-    fetchSettings();
+    loadData();
     // Listen for settings updates from admin
-    window.addEventListener('settingsUpdated', fetchSettings);
-    return () => window.removeEventListener('settingsUpdated', fetchSettings);
+    window.addEventListener('settingsUpdated', loadData);
+    return () => window.removeEventListener('settingsUpdated', loadData);
   }, []);
 
   // Admin access gimmick: Type 'admin' to redirect

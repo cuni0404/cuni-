@@ -11,16 +11,40 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const loadData = () => {
+      // Load projects from localStorage
+      const savedProjects = localStorage.getItem('cuni_projects');
+      if (savedProjects) {
+        const data = JSON.parse(savedProjects);
+        const featured = data.filter((p: Project) => p.isFeatured === 1).slice(0, 6);
+        setProjects(featured);
+        
+        setTimeout(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollLeft = 0;
+          }
+        }, 100);
+      } else {
+        fetchProjects();
+      }
+
+      // Load settings from localStorage
+      const savedSettings = localStorage.getItem('cuni_settings');
+      if (savedSettings) {
+        setSettings(JSON.parse(savedSettings));
+      } else {
+        fetchSettings();
+      }
+    };
+
     const fetchProjects = async () => {
       try {
         const response = await fetch('/api/projects');
         if (response.ok) {
           const data = await response.json();
-          // Filter featured projects and limit to 6
           const featured = data.filter((p: Project) => p.isFeatured === 1).slice(0, 6);
           setProjects(featured);
           
-          // Reset scroll to start after projects are loaded
           setTimeout(() => {
             if (scrollRef.current) {
               scrollRef.current.scrollLeft = 0;
@@ -44,8 +68,12 @@ export default function Home() {
       }
     };
 
-    fetchProjects();
-    fetchSettings();
+    loadData();
+
+    // Listen for settings updates from admin panel
+    const handleUpdate = () => loadData();
+    window.addEventListener('settingsUpdated', handleUpdate);
+    return () => window.removeEventListener('settingsUpdated', handleUpdate);
   }, []);
 
   const scroll = (direction: 'left' | 'right') => {

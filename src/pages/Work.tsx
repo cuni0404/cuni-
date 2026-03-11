@@ -9,6 +9,15 @@ export default function Work() {
   const [filter, setFilter] = useState('ALL');
 
   useEffect(() => {
+    const loadData = () => {
+      const savedProjects = localStorage.getItem('cuni_projects');
+      if (savedProjects) {
+        setProjects(JSON.parse(savedProjects));
+      } else {
+        fetchProjects();
+      }
+    };
+
     const fetchProjects = async () => {
       try {
         const response = await fetch('/api/projects');
@@ -20,7 +29,7 @@ export default function Work() {
         console.error('Error fetching projects:', err);
       }
     };
-    fetchProjects();
+    loadData();
   }, []);
 
   const categories = ['ALL', ...Array.from(new Set(projects.map(p => p.category)))];

@@ -7,10 +7,27 @@ export default function Contact() {
   const [settings, setSettings] = useState<Partial<SiteSettings>>({});
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => setSettings(data))
-      .catch(err => console.error('Failed to fetch settings:', err));
+    const loadData = () => {
+      const savedSettings = localStorage.getItem('cuni_settings');
+      if (savedSettings) {
+        setSettings(JSON.parse(savedSettings));
+      } else {
+        fetchSettings();
+      }
+    };
+
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+          const data = await response.json();
+          setSettings(data);
+        }
+      } catch (err) {
+        console.error('Error fetching settings:', err);
+      }
+    };
+    loadData();
   }, []);
 
   return (

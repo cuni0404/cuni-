@@ -6,16 +6,27 @@ export default function About() {
   const [settings, setSettings] = useState<Partial<SiteSettings>>({});
 
   useEffect(() => {
+    const loadData = () => {
+      const savedSettings = localStorage.getItem('cuni_settings');
+      if (savedSettings) {
+        setSettings(JSON.parse(savedSettings));
+      } else {
+        fetchSettings();
+      }
+    };
+
     const fetchSettings = async () => {
       try {
         const response = await fetch('/api/settings');
-        const data = await response.json();
-        setSettings(data);
+        if (response.ok) {
+          const data = await response.json();
+          setSettings(data);
+        }
       } catch (err) {
         console.error('Error fetching settings:', err);
       }
     };
-    fetchSettings();
+    loadData();
   }, []);
 
   const tools = [

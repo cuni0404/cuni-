@@ -73,10 +73,29 @@ export default function Admin() {
     const savedUser = localStorage.getItem('admin_user');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
-      fetchProjects();
-      fetchSettings();
+      loadData();
     }
   }, []);
+
+  const loadData = () => {
+    // Load projects from localStorage
+    const savedProjects = localStorage.getItem('cuni_projects');
+    if (savedProjects) {
+      setProjects(JSON.parse(savedProjects));
+    } else {
+      // Fallback to API if localStorage is empty (initial migration)
+      fetchProjects();
+    }
+
+    // Load settings from localStorage
+    const savedSettings = localStorage.getItem('cuni_settings');
+    if (savedSettings) {
+      setSettings(JSON.parse(savedSettings));
+    } else {
+      // Fallback to API if localStorage is empty (initial migration)
+      fetchSettings();
+    }
+  };
 
   const handlePasswordLogin = (e: FormEvent) => {
     e.preventDefault();
@@ -120,25 +139,13 @@ export default function Admin() {
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
 
-    // Optimistic update
     const updatedItems = items.map((item: any, index: number) => ({
       ...item,
       order_index: index
     })) as Project[];
+    
     setProjects(updatedItems);
-
-    try {
-      await fetch('/api/projects/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orders: updatedItems.map(item => ({ id: item.id, order_index: item.order_index }))
-        })
-      });
-    } catch (err) {
-      console.error('Error reordering projects:', err);
-      fetchProjects(); // Revert on error
-    }
+    localStorage.setItem('cuni_projects', JSON.stringify(updatedItems));
   };
 
   const fetchSettings = async () => {
@@ -159,16 +166,9 @@ export default function Admin() {
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure?')) {
-      try {
-        const response = await fetch(`/api/projects/${id}`, {
-          method: 'DELETE'
-        });
-        if (response.ok) {
-          fetchProjects();
-        }
-      } catch (err) {
-        console.error('Error deleting project:', err);
-      }
+      const updatedProjects = projects.filter(p => p.id !== id);
+      setProjects(updatedProjects);
+      localStorage.setItem('cuni_projects', JSON.stringify(updatedProjects));
     }
   };
 
@@ -189,39 +189,43 @@ export default function Admin() {
     setSaveStatus('saving');
     
     try {
-      const method = editingId ? 'PUT' : 'POST';
-      const url = editingId ? `/api/projects/${editingId}` : '/api/projects';
+      let updatedProjects: Project[];
       
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentProject)
-      });
-
-      if (response.ok) {
-        setSaveStatus('success');
-        
-        setTimeout(() => {
-          setSaveStatus('idle');
-          setIsEditing(false);
-          setEditingId(null);
-          setCurrentProject({
-            title: '',
-            role: '',
-            client: '',
-            year: '',
-            videoUrl: '',
-            videoFile: '',
-            thumbnailUrl: '',
-            description: '',
-            isFeatured: 0,
-            category: 'Webtoon PV'
-          });
-          fetchProjects();
-        }, 1500);
+      if (editingId) {
+        updatedProjects = projects.map(p => 
+          p.id === editingId ? { ...p, ...currentProject } as Project : p
+        );
       } else {
-        setSaveStatus('idle');
+        const newProject = {
+          ...currentProject,
+          id: Date.now().toString(),
+          order_index: projects.length
+        } as Project;
+        updatedProjects = [...projects, newProject];
       }
+
+      setProjects(updatedProjects);
+      localStorage.setItem('cuni_projects', JSON.stringify(updatedProjects));
+      
+      setSaveStatus('success');
+      
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setIsEditing(false);
+        setEditingId(null);
+        setCurrentProject({
+          title: '',
+          role: '',
+          client: '',
+          year: '',
+          videoUrl: '',
+          videoFile: '',
+          thumbnailUrl: '',
+          description: '',
+          isFeatured: 0,
+          category: 'Webtoon PV'
+        });
+      }, 1500);
     } catch (err) {
       console.error('Error saving project:', err);
       setSaveStatus('idle');
@@ -299,19 +303,10 @@ export default function Admin() {
     e.preventDefault();
     setSaveStatus('saving');
     try {
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-
-      if (response.ok) {
-        setSaveStatus('success');
-        window.dispatchEvent(new CustomEvent('settingsUpdated'));
-        setTimeout(() => setSaveStatus('idle'), 3000);
-      } else {
-        setSaveStatus('idle');
-      }
+      localStorage.setItem('cuni_settings', JSON.stringify(settings));
+      setSaveStatus('success');
+      window.dispatchEvent(new CustomEvent('settingsUpdated'));
+      setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
       console.error('Error saving settings:', err);
       setSaveStatus('idle');
