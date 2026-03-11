@@ -17,10 +17,6 @@ export default function Work() {
       setProjects(data);
     }, (error) => {
       console.error("Error fetching projects:", error);
-      const savedProjects = localStorage.getItem('cuni_projects');
-      if (savedProjects) {
-        setProjects(JSON.parse(savedProjects));
-      }
     });
 
     return () => unsubscribe();

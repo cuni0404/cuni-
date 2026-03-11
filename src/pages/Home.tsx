@@ -32,24 +32,12 @@ export default function Home() {
       }, 100);
     }, (error) => {
       console.error("Error fetching featured projects:", error);
-      // Fallback to localStorage
-      const savedProjects = localStorage.getItem('cuni_projects');
-      if (savedProjects) {
-        const localData = JSON.parse(savedProjects);
-        const featured = localData.filter((p: Project) => p.isFeatured === 1).slice(0, 6);
-        setProjects(featured);
-      }
     });
 
     // Fetch Settings from Firestore
     const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
       if (snapshot.exists()) {
         setSettings(snapshot.data() as SiteSettings);
-      } else {
-        const savedSettings = localStorage.getItem('cuni_settings');
-        if (savedSettings) {
-          setSettings(JSON.parse(savedSettings));
-        }
       }
     }, (error) => {
       console.error("Error fetching settings:", error);

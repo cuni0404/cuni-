@@ -44,10 +44,9 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      let email = request.auth.token.email.lower();
-      let isBootstrapAdmin = (email == "nik75687@gmail.com" || email == "cuni0404@gmail.com") && request.auth.token.email_verified == true;
-      let isDbAdmin = exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      return isAuthenticated() && (isBootstrapAdmin || isDbAdmin);
+      return isAuthenticated() &&
+             (request.auth.token.email.matches('(?i)nik75687@gmail\\.com') || 
+              request.auth.token.email.matches('(?i)cuni0404@gmail\\.com'));
     }
 
     function isValidUrl(url) {

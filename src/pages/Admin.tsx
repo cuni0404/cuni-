@@ -122,6 +122,7 @@ export default function Admin() {
     images: []
   });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
   const [uploading, setUploading] = useState(false);
 
@@ -264,12 +265,11 @@ export default function Admin() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure?')) {
-      try {
-        await deleteDoc(doc(db, 'projects', id));
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `projects/${id}`);
-      }
+    try {
+      await deleteDoc(doc(db, 'projects', id));
+      setDeleteConfirmId(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `projects/${id}`);
     }
   };
 
@@ -318,9 +318,9 @@ export default function Admin() {
           images: []
         });
       }, 1500);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `projects/${editingId || 'new'}`);
+    } catch (err: any) {
       setSaveStatus('idle');
+      handleFirestoreError(err, OperationType.WRITE, `projects/${editingId || 'new'}`);
     }
   };
 
@@ -404,9 +404,9 @@ export default function Admin() {
       await setDoc(doc(db, 'settings', 'global'), settings);
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+    } catch (err: any) {
       setSaveStatus('idle');
+      handleFirestoreError(err, OperationType.WRITE, 'settings/global');
     }
   };
 
@@ -564,12 +564,32 @@ export default function Admin() {
                             </div>
                           </div>
                           <div className="flex gap-4">
-                            <button onClick={() => handleEdit(project)} className="p-2 hover:bg-white/10 rounded transition-colors">
-                              <Edit2 size={18} />
-                            </button>
-                            <button onClick={() => handleDelete(project.id)} className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors">
-                              <Trash2 size={18} />
-                            </button>
+                            {deleteConfirmId === project.id ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Delete?</span>
+                                <button 
+                                  onClick={() => handleDelete(project.id)}
+                                  className="bg-red-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase"
+                                >
+                                  Yes
+                                </button>
+                                <button 
+                                  onClick={() => setDeleteConfirmId(null)}
+                                  className="bg-white/10 hover:bg-white/20 px-3 py-1 rounded text-[10px] font-bold uppercase"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <button onClick={() => handleEdit(project)} className="p-2 hover:bg-white/10 rounded transition-colors">
+                                  <Edit2 size={18} />
+                                </button>
+                                <button onClick={() => setDeleteConfirmId(project.id)} className="p-2 hover:bg-red-500/20 text-red-500 rounded transition-colors">
+                                  <Trash2 size={18} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
