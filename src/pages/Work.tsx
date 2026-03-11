@@ -85,7 +85,7 @@ export default function Work() {
                 </div>
               )}
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-[400ms] ease-in-out flex flex-col items-center justify-center p-6 text-center rounded-2xl">
-                <h4 className="text-xl font-bold tracking-tighter uppercase mb-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-[400ms] ease-out">
+                <h4 className="text-lg font-bold tracking-tighter uppercase mb-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-[400ms] ease-out">
                   {project.title}
                 </h4>
                 <div className="w-8 h-[1px] bg-brand mb-4 scale-x-0 group-hover:scale-x-100 transition-transform duration-[400ms] delay-100" />
@@ -95,7 +95,7 @@ export default function Work() {
               </div>
             </Link>
             <div className="mt-6">
-              <h4 className="text-lg font-medium tracking-tight mb-1">{project.title}</h4>
+              <h4 className="text-base font-medium tracking-tight mb-1">{project.title}</h4>
               <p className="text-[10px] uppercase tracking-widest opacity-40">{project.category} — {project.year}</p>
             </div>
           </motion.div>

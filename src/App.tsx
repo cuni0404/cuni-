@@ -94,6 +94,16 @@ function Navbar({ settings }: { settings: any }) {
   );
 }
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}
+
 function AppContent() {
   const [settings, setSettings] = useState<any>({});
   const navigate = useNavigate();
@@ -206,6 +216,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-white selection:bg-brand selection:text-black">
+      <ScrollToTop />
       <Navbar settings={settings} />
       <main>
         <Routes>
