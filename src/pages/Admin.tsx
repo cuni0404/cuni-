@@ -15,75 +15,9 @@ import {
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Project, ProjectInput, SiteSettings } from '../types';
-import { db, auth } from '../firebase';
-import { 
-  collection, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  getDoc, 
-  setDoc,
-  query,
-  orderBy,
-  serverTimestamp
-} from 'firebase/firestore';
-import { signInAnonymously, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
 
 export default function Admin() {
-  const [user, setUser] = useState(auth.currentUser);
+  const [user, setUser] = useState<any>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [settings, setSettings] = useState<SiteSettings>({
     logoText: '',
@@ -131,72 +65,51 @@ export default function Admin() {
     'Personal Work'
   ];
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      if (user) {
-        fetchProjects();
-        fetchSettings();
-      }
-    });
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState(false);
 
-    // Silent anonymous login if not logged in
-    const silentLogin = async () => {
-      try {
-        if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error('Silent login failed:', err);
-      }
-    };
-    silentLogin();
-    
-    return () => unsubscribe();
+  useEffect(() => {
+    // Check if "logged in" via local storage for simple persistence
+    const savedUser = localStorage.getItem('admin_user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+      fetchProjects();
+      fetchSettings();
+    }
   }, []);
 
-  const handleGoogleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (err) {
-      console.error('Login failed:', err);
-      alert('로그인에 실패했습니다.');
+  const handlePasswordLogin = (e: FormEvent) => {
+    e.preventDefault();
+    // Simple password check - in a real app this would be server-side
+    // For now using a default password or one from env if available
+    const ADMIN_PASS = "0404"; // Default password
+    
+    if (password === ADMIN_PASS) {
+      const mockUser = { email: 'admin@portfolio.com', isAnonymous: false };
+      setUser(mockUser);
+      localStorage.setItem('admin_user', JSON.stringify(mockUser));
+      setLoginError(false);
+      fetchProjects();
+      fetchSettings();
+    } else {
+      setLoginError(true);
     }
   };
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      // Re-login anonymously to maintain basic access if needed
-      await signInAnonymously(auth);
-    } catch (err) {
-      console.error('Logout failed:', err);
-    }
+    setUser(null);
+    localStorage.removeItem('admin_user');
   };
 
   const fetchProjects = async () => {
-    const path = 'projects';
     try {
-      const q = query(collection(db, path), orderBy('order', 'asc'));
-      const querySnapshot = await getDocs(q);
-      const projectsData = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Project[];
-      
-      // If any project doesn't have an order, assign one based on createdAt
-      if (projectsData.some(p => p.order === undefined)) {
-        const updatedProjects = projectsData.map((p, idx) => ({
-          ...p,
-          order: p.order ?? idx
-        }));
-        setProjects(updatedProjects);
-      } else {
+      const response = await fetch('/api/projects');
+      if (response.ok) {
+        const projectsData = await response.json();
         setProjects(projectsData);
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.GET, path);
+      console.error('Error fetching projects:', err);
     }
   };
 
@@ -210,32 +123,29 @@ export default function Admin() {
     // Optimistic update
     const updatedItems = items.map((item: any, index: number) => ({
       ...item,
-      order: index
+      order_index: index
     })) as Project[];
     setProjects(updatedItems);
 
-    // Update Firestore
-    const path = 'projects';
     try {
-      const batch: Promise<void>[] = [];
-      updatedItems.forEach((item) => {
-        const docRef = doc(db, path, item.id);
-        batch.push(updateDoc(docRef, { order: item.order }));
+      await fetch('/api/projects/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orders: updatedItems.map(item => ({ id: item.id, order_index: item.order_index }))
+        })
       });
-      await Promise.all(batch);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      console.error('Error reordering projects:', err);
       fetchProjects(); // Revert on error
     }
   };
 
   const fetchSettings = async () => {
-    const path = 'settings/main';
     try {
-      const docRef = doc(db, 'settings', 'main');
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const data = await response.json();
         const sanitizedData = { ...data };
         Object.keys(sanitizedData).forEach(key => {
           if (sanitizedData[key] === null) sanitizedData[key] = '';
@@ -243,18 +153,21 @@ export default function Admin() {
         setSettings(prev => ({ ...prev, ...sanitizedData }));
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.GET, path);
+      console.error('Error fetching settings:', err);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure?')) {
-      const path = `projects/${id}`;
       try {
-        await deleteDoc(doc(db, 'projects', id));
-        fetchProjects();
+        const response = await fetch(`/api/projects/${id}`, {
+          method: 'DELETE'
+        });
+        if (response.ok) {
+          fetchProjects();
+        }
       } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, path);
+        console.error('Error deleting project:', err);
       }
     }
   };
@@ -275,46 +188,42 @@ export default function Admin() {
     e.preventDefault();
     setSaveStatus('saving');
     
-    const path = editingId ? `projects/${editingId}` : 'projects';
     try {
-      if (editingId) {
-        const docRef = doc(db, 'projects', editingId);
-        await updateDoc(docRef, {
-          ...currentProject,
-          updatedAt: serverTimestamp()
-        });
-      } else {
-        // Get max order
-        const maxOrder = projects.length > 0 ? Math.max(...projects.map(p => p.order ?? 0)) : -1;
-        await addDoc(collection(db, 'projects'), {
-          ...currentProject,
-          order: maxOrder + 1,
-          createdAt: serverTimestamp()
-        });
-      }
-
-      setSaveStatus('success');
+      const method = editingId ? 'PUT' : 'POST';
+      const url = editingId ? `/api/projects/${editingId}` : '/api/projects';
       
-      setTimeout(() => {
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentProject)
+      });
+
+      if (response.ok) {
+        setSaveStatus('success');
+        
+        setTimeout(() => {
+          setSaveStatus('idle');
+          setIsEditing(false);
+          setEditingId(null);
+          setCurrentProject({
+            title: '',
+            role: '',
+            client: '',
+            year: '',
+            videoUrl: '',
+            videoFile: '',
+            thumbnailUrl: '',
+            description: '',
+            isFeatured: 0,
+            category: 'Webtoon PV'
+          });
+          fetchProjects();
+        }, 1500);
+      } else {
         setSaveStatus('idle');
-        setIsEditing(false);
-        setEditingId(null);
-        setCurrentProject({
-          title: '',
-          role: '',
-          client: '',
-          year: '',
-          videoUrl: '',
-          videoFile: '',
-          thumbnailUrl: '',
-          description: '',
-          isFeatured: 0,
-          category: 'Webtoon PV'
-        });
-        fetchProjects();
-      }, 1500);
+      }
     } catch (err) {
-      handleFirestoreError(err, editingId ? OperationType.UPDATE : OperationType.CREATE, path);
+      console.error('Error saving project:', err);
       setSaveStatus('idle');
     }
   };
@@ -389,14 +298,22 @@ export default function Admin() {
   const handleSaveSettings = async (e: FormEvent) => {
     e.preventDefault();
     setSaveStatus('saving');
-    const path = 'settings/main';
     try {
-      await setDoc(doc(db, 'settings', 'main'), settings);
-      setSaveStatus('success');
-      window.dispatchEvent(new CustomEvent('settingsUpdated'));
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+
+      if (response.ok) {
+        setSaveStatus('success');
+        window.dispatchEvent(new CustomEvent('settingsUpdated'));
+        setTimeout(() => setSaveStatus('idle'), 3000);
+      } else {
+        setSaveStatus('idle');
+      }
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, path);
+      console.error('Error saving settings:', err);
       setSaveStatus('idle');
     }
   };
@@ -437,12 +354,21 @@ export default function Admin() {
               </button>
             </div>
           ) : (
-            <button 
-              onClick={handleGoogleLogin}
-              className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded font-bold text-xs uppercase tracking-widest hover:bg-brand transition-colors"
-            >
-              Admin Login
-            </button>
+            <form onSubmit={handlePasswordLogin} className="flex items-center gap-2">
+              <input 
+                type="password" 
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={`bg-white/5 border ${loginError ? 'border-red-500' : 'border-white/10'} px-4 py-2 rounded text-xs focus:outline-none focus:border-brand w-32 md:w-48 transition-all`}
+              />
+              <button 
+                type="submit"
+                className="bg-white text-black px-4 py-2 rounded font-bold text-xs uppercase tracking-widest hover:bg-brand transition-colors"
+              >
+                Login
+              </button>
+            </form>
           )}
           <div className="flex bg-white/5 p-1 rounded-lg">
             <button 

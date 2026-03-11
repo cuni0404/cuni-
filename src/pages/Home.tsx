@@ -4,8 +4,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Layout } from 'lucide-react';
 import { Project, SiteSettings } from '../types';
 import { cn } from '../lib/utils';
-import { db } from '../firebase';
-import { collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -15,18 +13,20 @@ export default function Home() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const q = query(
-          collection(db, 'projects'), 
-          where('isFeatured', '==', 1),
-          orderBy('order', 'asc'),
-          limit(6)
-        );
-        const querySnapshot = await getDocs(q);
-        const projectsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as unknown as Project[];
-        setProjects(projectsData);
+        const response = await fetch('/api/projects');
+        if (response.ok) {
+          const data = await response.json();
+          // Filter featured projects and limit to 6
+          const featured = data.filter((p: Project) => p.isFeatured === 1).slice(0, 6);
+          setProjects(featured);
+          
+          // Reset scroll to start after projects are loaded
+          setTimeout(() => {
+            if (scrollRef.current) {
+              scrollRef.current.scrollLeft = 0;
+            }
+          }, 100);
+        }
       } catch (err) {
         console.error('Error fetching projects:', err);
       }
@@ -34,10 +34,10 @@ export default function Home() {
 
     const fetchSettings = async () => {
       try {
-        const docRef = doc(db, 'settings', 'main');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setSettings(docSnap.data());
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+          const data = await response.json();
+          setSettings(data);
         }
       } catch (err) {
         console.error('Error fetching settings:', err);
@@ -144,82 +144,87 @@ export default function Home() {
           animation: marquee 60s linear infinite;
         }
         .mask-fade {
-          mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
-          -webkit-mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
+          mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+          -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
         }
       `}</style>
 
       {/* Latest Works Slider */}
-      <section className="py-24 md:py-40">
-        <div className="px-6 md:px-24 flex justify-between items-end mb-16">
-          <div>
-            <h3 className="text-4xl md:text-6xl font-display font-black tracking-tighter uppercase text-white">
-              LATEST <span className="text-brand">WORKS</span>
-            </h3>
-          </div>
-          <div className="flex gap-4">
-            <button 
-              onClick={() => scroll('left')}
-              className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center hover:bg-brand hover:text-black hover:border-brand transition-all"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button 
-              onClick={() => scroll('right')}
-              className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center hover:bg-brand hover:text-black hover:border-brand transition-all"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
+      <section className="py-24 md:py-40 overflow-hidden w-full bg-black">
+        <div className="max-w-[1400px] mx-auto px-6 md:px-12 mb-12 text-center">
+          <h3 className="text-2xl md:text-4xl font-display font-black tracking-tighter uppercase text-white inline-block relative">
+            LATEST WORKS
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-8 h-[2px] bg-brand" />
+          </h3>
         </div>
 
-        <div 
-          ref={scrollRef}
-          className="flex gap-[10px] overflow-x-auto no-scrollbar px-6 md:px-24 snap-x snap-mandatory"
-        >
-          {projects.map((project, index) => (
-            <motion.div
-              key={project.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              className="min-w-[300px] md:min-w-[450px] snap-start group"
+        <div className="relative w-full max-w-[1600px] mx-auto group/slider">
+          {/* Navigation Buttons - Subtle Overlay */}
+          <button 
+            onClick={() => scroll('left')}
+            className="absolute left-6 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/5 flex items-center justify-center hover:bg-brand hover:text-black transition-all opacity-0 group-hover/slider:opacity-100 hidden md:flex"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button 
+            onClick={() => scroll('right')}
+            className="absolute right-6 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/5 flex items-center justify-center hover:bg-brand hover:text-black transition-all opacity-0 group-hover/slider:opacity-100 hidden md:flex"
+          >
+            <ChevronRight size={20} />
+          </button>
+
+          <div className="mask-fade px-6 md:px-20">
+            <div 
+              ref={scrollRef}
+              className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth pb-10 pt-2 justify-start"
             >
-              <Link to={`/work/${project.id}`} className="block aspect-video overflow-hidden bg-white/5 relative rounded-2xl border border-white/5">
-                {project.thumbnailUrl ? (
-                  <img 
-                    src={`${project.thumbnailUrl}?v=${project.id}`} 
-                    alt={project.title}
-                    className="w-full h-full object-cover transition-transform duration-[400ms] ease-in-out group-hover:scale-105 rounded-2xl"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center rounded-2xl">
-                    <Layout size={48} className="opacity-10" />
+              {projects.map((project) => (
+                <motion.div
+                  key={project.id}
+                  initial={{ opacity: 0, y: 15 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  className="min-w-[220px] md:min-w-[280px] lg:min-w-[320px] snap-start group"
+                >
+                  <Link to={`/work/${project.id}`} className="block aspect-video overflow-hidden bg-white/5 relative rounded-lg border border-white/10 shadow-2xl">
+                    {project.thumbnailUrl ? (
+                      <img 
+                        src={`${project.thumbnailUrl}?v=${project.id}`} 
+                        alt={project.title}
+                        className="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover:scale-110"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Layout size={32} className="opacity-10" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-4">
+                      <h4 className="text-sm font-bold tracking-tight uppercase text-white truncate">
+                        {project.title}
+                      </h4>
+                      <p className="text-[7px] tracking-[0.3em] uppercase text-brand mt-0.5">
+                        {project.category}
+                      </p>
+                    </div>
+                  </Link>
+                  <div className="mt-3 px-1">
+                    <h4 className="text-[10px] font-bold tracking-tight uppercase opacity-70 group-hover:text-brand transition-colors truncate">{project.title}</h4>
+                    <p className="text-[7px] uppercase tracking-[0.2em] opacity-20 mt-0.5">{project.category}</p>
                   </div>
-                )}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-[400ms] ease-in-out flex flex-col items-center justify-center p-6 text-center rounded-2xl">
-                  <h4 className="text-xl font-bold tracking-tighter uppercase mb-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-[400ms] ease-out">
-                    {project.title}
-                  </h4>
-                  <div className="w-8 h-[1px] bg-brand mb-4 scale-x-0 group-hover:scale-x-100 transition-transform duration-[400ms] delay-100" />
-                  <span className="text-[9px] tracking-[0.4em] uppercase opacity-60 translate-y-2 group-hover:translate-y-0 transition-transform duration-[400ms] delay-150">
-                    {project.category}
-                  </span>
-                </div>
-              </Link>
-              <div className="mt-4">
-                <h4 className="text-sm font-medium tracking-tight mb-1">{project.title}</h4>
-                <p className="text-[9px] uppercase tracking-widest opacity-40">{project.category} — {project.year}</p>
+                </motion.div>
+              ))}
+              
+              {/* View All Card - Always at the end (right side) */}
+              <div className="min-w-[220px] md:min-w-[280px] lg:min-w-[320px] snap-start">
+                <Link to="/work" className="flex flex-col items-center justify-center aspect-video border border-white/10 bg-white/5 hover:bg-white/[0.08] transition-all group rounded-lg shadow-2xl">
+                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center mb-3 group-hover:bg-brand group-hover:text-black transition-all">
+                    <ArrowRight size={16} />
+                  </div>
+                  <span className="text-[8px] tracking-[0.4em] uppercase opacity-30 group-hover:opacity-100">View All</span>
+                </Link>
               </div>
-            </motion.div>
-          ))}
-          {/* View All Card */}
-          <div className="min-w-[300px] md:min-w-[450px] snap-start">
-            <Link to="/work" className="flex flex-col items-center justify-center aspect-video border border-white/10 hover:bg-white/5 transition-colors group rounded-2xl">
-              <span className="text-[10px] tracking-[0.4em] uppercase opacity-40 group-hover:opacity-100 mb-4">View All Projects</span>
-              <ArrowRight size={24} className="opacity-20 group-hover:opacity-100 group-hover:translate-x-2 transition-all" />
-            </Link>
+            </div>
           </div>
         </div>
       </section>

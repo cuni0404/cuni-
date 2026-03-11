@@ -10,7 +10,7 @@ export interface Project {
   description: string;
   isFeatured: number;
   category: string;
-  order: number;
+  order_index: number;
   images?: { id: string; imageUrl: string }[];
   createdAt?: any;
   updatedAt?: any;

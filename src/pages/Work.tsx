@@ -3,8 +3,6 @@ import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { Layout } from 'lucide-react';
 import { Project } from '../types';
-import { db } from '../firebase';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
 export default function Work() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -13,13 +11,11 @@ export default function Work() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const q = query(collection(db, 'projects'), orderBy('order', 'asc'));
-        const querySnapshot = await getDocs(q);
-        const projectsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as unknown as Project[];
-        setProjects(projectsData);
+        const response = await fetch('/api/projects');
+        if (response.ok) {
+          const data = await response.json();
+          setProjects(data);
+        }
       } catch (err) {
         console.error('Error fetching projects:', err);
       }
