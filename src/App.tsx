@@ -120,13 +120,39 @@ function AppContent() {
 
       // Update favicon if logoImage exists
       if (data.logoImage) {
-        let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
-        if (!link) {
-          link = document.createElement('link');
-          link.rel = 'icon';
-          document.getElementsByTagName('head')[0].appendChild(link);
-        }
-        link.href = data.logoImage;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = data.logoImage;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 32;
+          canvas.height = 32;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const radius = 8; // ~25% of 32
+            ctx.beginPath();
+            ctx.moveTo(radius, 0);
+            ctx.lineTo(32 - radius, 0);
+            ctx.quadraticCurveTo(32, 0, 32, radius);
+            ctx.lineTo(32, 32 - radius);
+            ctx.quadraticCurveTo(32, 32, 32 - radius, 32);
+            ctx.lineTo(radius, 32);
+            ctx.quadraticCurveTo(0, 32, 0, 32 - radius);
+            ctx.lineTo(0, radius);
+            ctx.quadraticCurveTo(0, 0, radius, 0);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(img, 0, 0, 32, 32);
+            
+            let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+            if (!link) {
+              link = document.createElement('link');
+              link.rel = 'icon';
+              document.getElementsByTagName('head')[0].appendChild(link);
+            }
+            link.href = canvas.toDataURL('image/png');
+          }
+        };
       }
     };
 
