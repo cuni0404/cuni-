@@ -29,7 +29,7 @@ import {
   writeBatch,
   getDocs
 } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, signOut } from 'firebase/auth';
 
 enum OperationType {
   CREATE = 'create',
@@ -83,8 +83,11 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export default function Admin() {
-  const [user, setUser] = useState<any>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(() => {
+    return sessionStorage.getItem('admin_authorized') === 'true';
+  });
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [settings, setSettings] = useState<SiteSettings>({
     logoText: '',
@@ -134,22 +137,41 @@ export default function Admin() {
     'Personal Work'
   ];
 
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationStatus, setMigrationStatus] = useState<string | null>(null);
 
   useEffect(() => {
+    // We use anonymous auth to allow Firestore writes if rules permit
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setIsAuthReady(true);
+      if (!user && isAuthorized) {
+        signInAnonymously(auth).catch(console.error);
+      }
     });
 
     return () => unsubscribeAuth();
-  }, []);
+  }, [isAuthorized]);
+
+  const handlePasswordLogin = (e: FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === '0404') {
+      setIsAuthorized(true);
+      sessionStorage.setItem('admin_authorized', 'true');
+      setLoginError(false);
+      // Sign in anonymously to satisfy "isAuthenticated" rules if needed
+      signInAnonymously(auth).catch(console.error);
+    } else {
+      setLoginError(true);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setIsAuthorized(false);
+    sessionStorage.removeItem('admin_authorized');
+  };
 
   useEffect(() => {
-    if (!user) return;
+    if (!isAuthorized) return;
 
     const q = query(collection(db, 'projects'), orderBy('order_index', 'asc'));
     const unsubscribeProjects = onSnapshot(q, (snapshot) => {
@@ -176,28 +198,9 @@ export default function Admin() {
       unsubscribeProjects();
       unsubscribeSettings();
     };
-  }, [user]);
-
-  const handleGoogleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (err) {
-      console.error('Login failed', err);
-      alert('Login failed. Please try again.');
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (err) {
-      console.error('Logout failed', err);
-    }
-  };
-
+  }, [isAuthorized]);
   const migrateDataToFirebase = async () => {
-    if (!user) return;
+    if (!isAuthorized) return;
     setIsMigrating(true);
     setMigrationStatus('Starting migration...');
 
@@ -410,6 +413,44 @@ export default function Admin() {
     }
   };
 
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-md bg-[#0a0a0a] border border-white/10 p-10 rounded-3xl shadow-2xl text-center"
+        >
+          <div className="w-16 h-16 bg-brand/10 text-brand rounded-full flex items-center justify-center mx-auto mb-6">
+            <Settings size={32} />
+          </div>
+          <h1 className="text-2xl font-bold mb-2 uppercase tracking-tighter">Admin Access</h1>
+          <p className="text-xs opacity-40 mb-8 uppercase tracking-widest">Enter password to continue</p>
+          
+          <form onSubmit={handlePasswordLogin} className="space-y-4">
+            <input 
+              type="password"
+              autoFocus
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="••••"
+              className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-center text-2xl tracking-[0.5em] focus:outline-none focus:border-brand transition-colors"
+            />
+            {loginError && (
+              <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest">Incorrect Password</p>
+            )}
+            <button 
+              type="submit"
+              className="w-full bg-brand text-black font-bold py-4 rounded-xl uppercase tracking-widest text-xs hover:bg-brand/90 transition-colors"
+            >
+              Enter Dashboard
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="pt-32 pb-24 px-6 md:px-12 max-w-6xl mx-auto relative">
       {/* Uploading Overlay */}
@@ -431,28 +472,15 @@ export default function Admin() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
         <h1 className="text-4xl font-bold tracking-tighter uppercase">Dashboard</h1>
         <div className="flex items-center gap-4">
-          {user ? (
-            <div className="flex items-center gap-4">
-              <div className="text-right hidden md:block">
-                <p className="text-[10px] uppercase tracking-widest opacity-40">Logged in as</p>
-                <p className="text-xs font-bold">{user.email}</p>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors text-red-500"
-                title="Logout"
-              >
-                <LogOut size={20} />
-              </button>
-            </div>
-          ) : (
+          <div className="flex items-center gap-4">
             <button 
-              onClick={handleGoogleLogin}
-              className="bg-white text-black px-6 py-2 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-brand transition-colors flex items-center gap-2"
+              onClick={handleLogout}
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors text-red-500 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest"
+              title="Logout"
             >
-              <Database size={16} /> Login with Google
+              <LogOut size={20} /> LOGOUT
             </button>
-          )}
+          </div>
           <div className="flex bg-white/5 p-1 rounded-lg">
             <button 
               onClick={() => setActiveTab('projects')}
@@ -470,26 +498,24 @@ export default function Admin() {
         </div>
       </div>
 
-      {user && (
-        <div className="mb-12 p-6 rounded-2xl bg-brand/5 border border-brand/20 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-brand/10 rounded-full text-brand">
-              <Database size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold uppercase tracking-tight">Cloud Database Active</h3>
-              <p className="text-xs opacity-60">Your data is now being synced to the cloud and will be visible on all devices.</p>
-            </div>
+      <div className="mb-12 p-6 rounded-2xl bg-brand/5 border border-brand/20 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-brand/10 rounded-full text-brand">
+            <Database size={24} />
           </div>
-          <button 
-            onClick={migrateDataToFirebase}
-            disabled={isMigrating}
-            className="flex items-center gap-2 bg-white text-black px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-brand transition-all disabled:opacity-50"
-          >
-            {isMigrating ? 'Migrating...' : 'Migrate Local Data to Cloud'}
-          </button>
+          <div>
+            <h3 className="font-bold uppercase tracking-tight">Admin Mode Active</h3>
+            <p className="text-xs opacity-60">You have full access to modify projects and site settings.</p>
+          </div>
         </div>
-      )}
+        <button 
+          onClick={migrateDataToFirebase}
+          disabled={isMigrating}
+          className="flex items-center gap-2 bg-white text-black px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-brand transition-all disabled:opacity-50"
+        >
+          {isMigrating ? 'Migrating...' : 'Migrate Local Data to Cloud'}
+        </button>
+      </div>
 
       {migrationStatus && (
         <motion.div 

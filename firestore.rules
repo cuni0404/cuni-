@@ -44,9 +44,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
-             (request.auth.token.email.matches('(?i)nik75687@gmail\\.com') || 
-              request.auth.token.email.matches('(?i)cuni0404@gmail\\.com'));
+      return isAuthenticated();
     }
 
     function isValidUrl(url) {
