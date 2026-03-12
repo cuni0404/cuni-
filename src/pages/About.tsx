@@ -70,9 +70,9 @@ export default function About() {
 
             <div className="md:w-3/4">
               <motion.div 
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
+                transition={{ duration: 0.4 }}
                 className="space-y-10"
               >
                 <h2 className="text-3xl md:text-5xl lg:text-6xl font-sans leading-[1.1] tracking-tighter font-bold text-white max-w-4xl">
@@ -82,20 +82,16 @@ export default function About() {
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="relative"
+                  transition={{ duration: 0.3 }}
+                  className="relative z-10 leading-relaxed whitespace-pre-wrap glass p-6 md:p-8 rounded-2xl border border-white/5"
+                  style={{ 
+                    fontSize: `${settings.aboutDescFontSize || 18}px`,
+                    fontWeight: settings.aboutDescFontWeight || 400,
+                    color: 'rgba(255, 255, 255, 0.9)',
+                    letterSpacing: '-0.01em'
+                  }}
                 >
-                  <div 
-                    className="relative z-10 leading-relaxed whitespace-pre-wrap glass p-6 md:p-8 rounded-2xl border border-white/5 bg-black/40 backdrop-blur-md"
-                    style={{ 
-                      fontSize: `${settings.aboutDescFontSize || 18}px`,
-                      fontWeight: settings.aboutDescFontWeight || 400,
-                      color: 'rgba(255, 255, 255, 0.9)',
-                      letterSpacing: '-0.01em'
-                    }}
-                  >
-                    {settings.aboutDescription || `웹툰 트레일러 등 2d 일러스트를 기반으로 하는 \n애니메이션을 제작하는 프리랜서 애니메이터 cuni 입니다\n\n2D 일러스트와 모션그래픽을 기반으로 캐릭터와 장면에 생동감을 불어넣고, \n작품이 가진 분위기와 감정을 영상으로 확장하는 작업을 하고 있습니다\n\n각 프로젝트가 하나의 작품으로 남을 수 있도록 \n연출, 애니메이션, 이펙트, 편집까지 전체 과정을 직접 설계하며 작업합니다`}
-                  </div>
+                  {settings.aboutDescription || `웹툰 트레일러 등 2d 일러스트를 기반으로 하는 \n애니메이션을 제작하는 프리랜서 애니메이터 cuni 입니다\n\n2D 일러스트와 모션그래픽을 기반으로 캐릭터와 장면에 생동감을 불어넣고, \n작품이 가진 분위기와 감정을 영상으로 확장하는 작업을 하고 있습니다\n\n각 프로젝트가 하나의 작품으로 남을 수 있도록 \n연출, 애니메이션, 이펙트, 편집까지 전체 과정을 직접 설계하며 작업합니다`}
                 </motion.div>
               </motion.div>
             </div>
